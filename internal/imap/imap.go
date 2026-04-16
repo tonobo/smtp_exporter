@@ -170,3 +170,45 @@ func hostOnly(addr string) string {
 	}
 	return h
 }
+
+// Sweep deletes probe mails older than maxAge. A message is a "probe mail"
+// if it has an X-Probe-ID header. maxAge <= 0 matches everything tagged.
+func Sweep(ctx context.Context, in ClientInput, maxAge time.Duration) (int, error) {
+	c, err := connect(ctx, in)
+	if err != nil {
+		return 0, err
+	}
+	defer c.Logout()
+	if err := c.Login(in.Username, in.Password).Wait(); err != nil {
+		return 0, err
+	}
+	if _, err := c.Select(in.Mailbox, nil).Wait(); err != nil {
+		return 0, err
+	}
+
+	crit := &imap.SearchCriteria{
+		Header: []imap.SearchCriteriaHeaderField{{Key: "X-Probe-ID", Value: ""}},
+	}
+	if maxAge > 0 {
+		crit.Before = time.Now().Add(-maxAge)
+	}
+	data, err := c.UIDSearch(crit, nil).Wait()
+	if err != nil {
+		return 0, err
+	}
+	uids := data.AllUIDs()
+	if len(uids) == 0 {
+		return 0, nil
+	}
+	set := imap.UIDSetNum(uids...)
+	if err := c.Store(set, &imap.StoreFlags{
+		Op:    imap.StoreFlagsAdd,
+		Flags: []imap.Flag{imap.FlagDeleted},
+	}, nil).Close(); err != nil {
+		return 0, err
+	}
+	if err := c.UIDExpunge(set).Close(); err != nil {
+		return 0, err
+	}
+	return len(uids), nil
+}
