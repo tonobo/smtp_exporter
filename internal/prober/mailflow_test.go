@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -91,8 +90,8 @@ func TestMailflow_EndToEnd(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	go imapSrv.Serve(il)
-	defer func() { imapSrv.Close(); il.Close() }()
+	go func() { _ = imapSrv.Serve(il) }()
+	defer func() { _ = imapSrv.Close(); il.Close() }()
 
 	// SMTP fake server
 	beh := &e2eBackend{imapUser: user}
@@ -103,8 +102,8 @@ func TestMailflow_EndToEnd(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	go smtpSrv.Serve(sl)
-	defer func() { smtpSrv.Close(); sl.Close() }()
+	go func() { _ = smtpSrv.Serve(sl) }()
+	defer func() { _ = smtpSrv.Close(); sl.Close() }()
 
 	// DNS fake: DNSBL zone "listed-test" lists 198.51.100.7; SPF TXT for example.org.
 	r := pdns.NewFake()
@@ -136,7 +135,6 @@ func TestMailflow_EndToEnd(t *testing.T) {
 	}
 
 	reg := prometheus.NewRegistry()
-	os.Hostname() // warm up for reproducibility; result not used
 	ok := Run(context.Background(), mod, glb, r, reg)
 	if !ok {
 		dumpReg(t, reg)

@@ -141,7 +141,7 @@ func fetchFirst(c *imapclient.Client, uid imap.UID) ([]byte, error) {
 	fc := c.Fetch(set, &imap.FetchOptions{
 		BodySection: []*imap.FetchItemBodySection{{}},
 	})
-	defer fc.Close()
+	defer func() { _ = fc.Close() }()
 	for {
 		msg := fc.Next()
 		if msg == nil {
