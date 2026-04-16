@@ -5,6 +5,7 @@ package spf
 
 import (
 	"context"
+	"errors"
 	"strings"
 
 	pdns "github.com/tonobo/smtp_exporter/internal/dns"
@@ -23,7 +24,9 @@ func Lookup(ctx context.Context, r pdns.Resolver, domain string) Result {
 	out := Result{Domain: domain}
 	txts, err := r.LookupTXT(ctx, domain)
 	if err != nil {
-		out.Err = err
+		if !errors.Is(err, pdns.ErrNXDomain) {
+			out.Err = err
+		}
 		return out
 	}
 	for _, t := range txts {

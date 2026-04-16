@@ -35,3 +35,15 @@ func TestLookup_SkipsNonSPF(t *testing.T) {
 		t.Fatalf("%#v", res)
 	}
 }
+
+func TestLookup_NXDOMAIN_NoError(t *testing.T) {
+	r := pdns.NewFake()
+	// key absent → ErrNXDomain from resolver
+	res := Lookup(context.Background(), r, "gone.example.org")
+	if res.Found {
+		t.Fatal("expected not found")
+	}
+	if res.Err != nil {
+		t.Fatalf("expected nil Err for NXDOMAIN, got %v", res.Err)
+	}
+}
