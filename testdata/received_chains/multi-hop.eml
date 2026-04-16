@@ -1,0 +1,14 @@
+Received: from internal.receiver.example (localhost [127.0.0.1])
+	by mx2.receiver.example (Postfix) with ESMTP id DEF456
+	for <target@receiver.example>; Mon, 01 Apr 2026 10:00:02 +0000
+Received: from mta.sender.example (mta.sender.example [203.0.113.9])
+	by mx.receiver.example (Postfix) with ESMTPS id ABC123
+	for <target@receiver.example>; Mon, 01 Apr 2026 10:00:00 +0000
+From: probe@sender.example
+To: target@receiver.example
+Subject: [smtp_exporter] multi
+X-Probe-ID: multi
+Date: Mon, 01 Apr 2026 10:00:00 +0000
+Message-ID: <multi@sender.example>
+
+body

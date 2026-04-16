@@ -1,0 +1,11 @@
+Received: from mta.sender.example (mta.sender.example [198.51.100.7])
+	by mx.receiver.example (Postfix) with ESMTPS id ABC123
+	for <target@receiver.example>; Mon, 01 Apr 2026 10:00:00 +0000
+From: probe@sender.example
+To: target@receiver.example
+Subject: [smtp_exporter] test-id
+X-Probe-ID: test-id
+Date: Mon, 01 Apr 2026 10:00:00 +0000
+Message-ID: <test-id@sender.example>
+
+body

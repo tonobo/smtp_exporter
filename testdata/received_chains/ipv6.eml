@@ -1,0 +1,11 @@
+Received: from v6.sender.example (v6.sender.example [IPv6:2001:db8::1])
+	by mx.receiver.example (Postfix) with ESMTPS id GHI789
+	for <target@receiver.example>; Mon, 01 Apr 2026 10:00:00 +0000
+From: probe@sender.example
+To: target@receiver.example
+Subject: [smtp_exporter] v6
+X-Probe-ID: v6
+Date: Mon, 01 Apr 2026 10:00:00 +0000
+Message-ID: <v6@sender.example>
+
+body
