@@ -2,6 +2,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -9,11 +10,9 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/alecthomas/kingpin/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/version"
 	"github.com/prometheus/exporter-toolkit/web"
-	"github.com/prometheus/exporter-toolkit/web/kingpinflag"
 
 	"github.com/tonobo/smtp_exporter/internal/config"
 	pdns "github.com/tonobo/smtp_exporter/internal/dns"
@@ -25,14 +24,17 @@ func main() {
 }
 
 func run() int {
-	var (
-		configFile  = kingpin.Flag("config.file", "Path to config file.").Default("smtp_exporter.yml").String()
-		configCheck = kingpin.Flag("config.check", "Validate config and exit.").Default("false").Bool()
-		webCfg      = kingpinflag.AddFlags(kingpin.CommandLine, ":9125")
-	)
-	kingpin.Version(version.Print("smtp_exporter"))
-	kingpin.HelpFlag.Short('h')
-	kingpin.Parse()
+	configFile := flag.String("config.file", "smtp_exporter.yml", "Path to config file.")
+	configCheck := flag.Bool("config.check", false, "Validate config and exit.")
+	listenAddress := flag.String("web.listen-address", ":9125", "Address on which to expose metrics and web interface.")
+	webConfigFile := flag.String("web.config.file", "", "Path to configuration that can enable TLS or authentication. See exporter-toolkit docs.")
+	showVersion := flag.Bool("version", false, "Print version information and exit.")
+	flag.Parse()
+
+	if *showVersion {
+		fmt.Println(version.Print("smtp_exporter"))
+		return 0
+	}
 
 	logger := slog.New(slog.NewJSONHandler(os.Stderr, nil))
 	logger.Info("starting smtp_exporter", "version", version.Info())
@@ -66,9 +68,15 @@ func run() int {
 	h.Register(mux)
 
 	srv := &http.Server{Handler: mux}
+	addrs := []string{*listenAddress}
+	systemd := false
+	webCfg := &web.FlagConfig{
+		WebListenAddresses: &addrs,
+		WebSystemdSocket:   &systemd,
+		WebConfigFile:      webConfigFile,
+	}
 	if err := web.ListenAndServe(srv, webCfg, logger); err != nil && err != http.ErrServerClosed {
 		logger.Error("http server failed", "err", err)
-		fmt.Println(err)
 		return 1
 	}
 	return 0
