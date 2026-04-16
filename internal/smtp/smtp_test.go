@@ -67,8 +67,8 @@ func startTestServer(t *testing.T) (string, *testBackend, func()) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	go srv.Serve(l)
-	return l.Addr().String(), be, func() { srv.Close(); l.Close() }
+	go func() { _ = srv.Serve(l) }()
+	return l.Addr().String(), be, func() { _ = srv.Close(); _ = l.Close() }
 }
 
 func TestSend_PlainSuccess(t *testing.T) {

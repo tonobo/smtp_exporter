@@ -46,7 +46,7 @@ func Send(ctx context.Context, in Input) (Result, error) {
 	if err != nil {
 		return res, err
 	}
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 
 	// For STARTTLS, initStartTLS already called hello() internally (with
 	// "localhost"), then startTLS resets didHello — so we can call Hello()
@@ -137,7 +137,7 @@ func dial(ctx context.Context, in Input) (*esmtp.Client, error) {
 		// resets didHello so the caller can issue Hello() with the real name.
 		c, err := esmtp.NewClientStartTLS(conn, cfg)
 		if err != nil {
-			conn.Close()
+			_ = conn.Close()
 			return nil, fmt.Errorf("starttls: %w", err)
 		}
 		return c, nil

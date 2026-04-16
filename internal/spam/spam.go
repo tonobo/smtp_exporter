@@ -74,10 +74,11 @@ func parseSpamAssassin(h mail.Header, m *Metrics) bool {
 		}
 	}
 	if v := h.Get("X-Spam-Status"); v != "" {
-		if mt := saStatusRE.FindStringSubmatch(v); mt != nil && !hit {
-			if s, err := strconv.ParseFloat(mt[1], 64); err == nil {
-				m.Score.WithLabelValues("spamassassin").Set(s)
-				hit = true
+		if !hit {
+			if mt := saStatusRE.FindStringSubmatch(v); mt != nil {
+				if s, err := strconv.ParseFloat(mt[1], 64); err == nil {
+					m.Score.WithLabelValues("spamassassin").Set(s)
+				}
 			}
 		}
 		flag := strings.HasPrefix(strings.TrimSpace(v), "Yes")

@@ -46,7 +46,7 @@ func startMemServer(t *testing.T, username, password string) (addr string, appen
 		r := &sizedReader{strings.NewReader(string(raw)), int64(len(raw))}
 		_, _ = user.Append("INBOX", r, &imap.AppendOptions{Time: time.Now()})
 	}
-	return l.Addr().String(), appendFn, func() { _ = srv.Close(); l.Close() }
+	return l.Addr().String(), appendFn, func() { _ = srv.Close(); _ = l.Close() }
 }
 
 func TestWaitForSubject_Found(t *testing.T) {

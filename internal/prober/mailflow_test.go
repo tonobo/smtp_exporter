@@ -91,7 +91,7 @@ func TestMailflow_EndToEnd(t *testing.T) {
 		t.Fatal(err)
 	}
 	go func() { _ = imapSrv.Serve(il) }()
-	defer func() { _ = imapSrv.Close(); il.Close() }()
+	defer func() { _ = imapSrv.Close(); _ = il.Close() }()
 
 	// SMTP fake server
 	beh := &e2eBackend{imapUser: user}
@@ -103,7 +103,7 @@ func TestMailflow_EndToEnd(t *testing.T) {
 		t.Fatal(err)
 	}
 	go func() { _ = smtpSrv.Serve(sl) }()
-	defer func() { _ = smtpSrv.Close(); sl.Close() }()
+	defer func() { _ = smtpSrv.Close(); _ = sl.Close() }()
 
 	// DNS fake: DNSBL zone "listed-test" lists 198.51.100.7; SPF TXT for example.org.
 	r := pdns.NewFake()
