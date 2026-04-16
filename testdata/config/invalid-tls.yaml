@@ -1,0 +1,14 @@
+modules:
+  bad:
+    prober: mailflow
+    timeout: 10s
+    smtp:
+      server: a:25
+      tls: nope
+      mail_from: a@b
+      mail_to: c@d
+    imap:
+      server: i:143
+      tls: nope
+      mailbox: INBOX
+      auth: {username: u, password: p}

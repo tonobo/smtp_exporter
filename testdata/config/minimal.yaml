@@ -1,0 +1,30 @@
+global:
+  dnsbl:
+    zones:
+      - zen.spamhaus.org
+      - bl.spamcop.net
+  cleanup:
+    enabled: true
+    max_age: 24h
+
+modules:
+  stalwart_to_mail_de:
+    prober: mailflow
+    timeout: 180s
+    smtp:
+      server: mail.example.org:587
+      tls: starttls
+      ehlo: mail.example.org
+      auth:
+        username: probe@example.org
+        password: secret
+      mail_from: probe@example.org
+      mail_to: target@other.example
+    imap:
+      server: imap.other.example:993
+      tls: tls
+      auth:
+        username: target@other.example
+        password: secret2
+      mailbox: INBOX
+      poll_interval: 2s
