@@ -1,2 +1,9 @@
-main
-smtp_exporter
+/smtp_exporter
+/dist/
+*.test
+*.out
+*.prof
+coverage.out
+coverage.html
+.idea/
+.vscode/
