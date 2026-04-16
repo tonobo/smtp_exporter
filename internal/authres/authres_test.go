@@ -32,8 +32,8 @@ probe_auth_result_found{check="spf"} 1
 	}
 }
 
-func TestObserve_Stalwart_HasSPFOnly(t *testing.T) {
-	raw, _ := os.ReadFile("../../testdata/auth_results/stalwart.txt")
+func TestObserve_Minimal_HasSPFOnly(t *testing.T) {
+	raw, _ := os.ReadFile("../../testdata/auth_results/minimal.txt")
 	reg := prometheus.NewRegistry()
 	m := NewMetrics(reg)
 

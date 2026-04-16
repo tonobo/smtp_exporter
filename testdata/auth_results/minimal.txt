@@ -1,0 +1,1 @@
+mail.example.org; spf=softfail; dkim=none; dmarc=none

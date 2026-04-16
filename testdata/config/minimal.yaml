@@ -8,7 +8,7 @@ global:
     max_age: 24h
 
 modules:
-  stalwart_to_mail_de:
+  example:
     prober: mailflow
     timeout: 180s
     smtp:

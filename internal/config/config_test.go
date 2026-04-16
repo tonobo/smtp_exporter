@@ -13,7 +13,7 @@ func TestLoad_Minimal(t *testing.T) {
 	if len(c.Modules) != 1 {
 		t.Fatalf("modules: %d", len(c.Modules))
 	}
-	m := c.Modules["stalwart_to_mail_de"]
+	m := c.Modules["example"]
 	if m.Prober != "mailflow" {
 		t.Fatalf("prober: %q", m.Prober)
 	}

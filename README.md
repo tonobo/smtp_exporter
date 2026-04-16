@@ -51,23 +51,23 @@ global:
     max_age: 24h
 
 modules:
-  stalwart_to_mail_de:
+  example:
     prober: mailflow
     timeout: 180s
     smtp:
-      server: mail.forststack.de:587
+      server: mail.example.org:587
       tls: starttls         # starttls | tls | no
-      ehlo: mail.forststack.de
+      ehlo: mail.example.org
       auth:
-        username: probe@forststack.de
+        username: probe@example.org
         password: secret
-      mail_from: probe@forststack.de
-      mail_to: forststack-probe@mail.de
+      mail_from: probe@example.org
+      mail_to: target@example.com
     imap:
-      server: imap.mail.de:993
+      server: imap.example.com:993
       tls: tls
       auth:
-        username: forststack-probe@mail.de
+        username: target@example.com
         password: secret
       mailbox: INBOX
       poll_interval: 2s
@@ -129,9 +129,9 @@ scrape_configs:
     scrape_interval: 5m
     scrape_timeout: 3m
     params:
-      module: [stalwart_to_mail_de]
+      module: [example]
     static_configs:
-      - targets: [stalwart_to_mail_de]
+      - targets: [example]
     relabel_configs:
       - source_labels: [__address__]
         target_label: module

@@ -1,1 +1,0 @@
-mail.forststack.de; spf=softfail; dkim=none; dmarc=none

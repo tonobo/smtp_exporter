@@ -10,7 +10,7 @@ func TestSafeConfig_ReloadSwap(t *testing.T) {
 		t.Fatalf("reload: %v", err)
 	}
 	c1 := s.Get()
-	if _, ok := c1.Modules["stalwart_to_mail_de"]; !ok {
+	if _, ok := c1.Modules["example"]; !ok {
 		t.Fatal("expected module after first load")
 	}
 
@@ -19,7 +19,7 @@ func TestSafeConfig_ReloadSwap(t *testing.T) {
 		t.Fatal("expected error from invalid config")
 	}
 	c2 := s.Get()
-	if _, ok := c2.Modules["stalwart_to_mail_de"]; !ok {
+	if _, ok := c2.Modules["example"]; !ok {
 		t.Fatal("live config should be unchanged after failed reload")
 	}
 }
