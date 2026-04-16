@@ -1,0 +1,1 @@
+mx.google.com; spf=pass (google.com: domain of probe@example.org designates 198.51.100.7 as permitted sender) smtp.mailfrom=probe@example.org; dkim=pass header.i=@example.org; dmarc=pass (p=REJECT sp=REJECT dis=NONE) header.from=example.org

@@ -1,0 +1,1 @@
+mail.de; spf=pass smtp.mailfrom=probe@example.org; dkim=neutral; dmarc=fail (p=none dis=none) header.from=example.org
