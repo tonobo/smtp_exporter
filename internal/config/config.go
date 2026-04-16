@@ -4,6 +4,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"sync/atomic"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -134,4 +135,31 @@ func validTLSMode(v string) error {
 	default:
 		return fmt.Errorf("invalid mode %q (want starttls|tls|no)", v)
 	}
+}
+
+// SafeConfig holds a Config that can be hot-reloaded.
+type SafeConfig struct {
+	v atomic.Pointer[Config]
+}
+
+// NewSafeConfig returns a SafeConfig with an empty Config set.
+func NewSafeConfig() *SafeConfig {
+	s := &SafeConfig{}
+	s.v.Store(&Config{Modules: map[string]Module{}})
+	return s
+}
+
+// Get returns the currently active Config (never nil).
+func (s *SafeConfig) Get() *Config {
+	return s.v.Load()
+}
+
+// Reload parses and validates the file; only swaps on success.
+func (s *SafeConfig) Reload(path string) error {
+	c, err := Load(path)
+	if err != nil {
+		return err
+	}
+	s.v.Store(c)
+	return nil
 }
