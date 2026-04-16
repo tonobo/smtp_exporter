@@ -1,0 +1,9 @@
+X-Spam-Status: Yes, score=7.2 required=5.0 tests=BAYES_99,HTML_MESSAGE autolearn=no version=3.4.6
+X-Spam-Score: 7.2
+X-Spam-Flag: YES
+X-Spam-Level: *******
+From: a@b
+To: c@d
+Subject: x
+
+body

@@ -1,0 +1,8 @@
+X-Rspamd-Score: 3.5 / 15.0
+X-Rspamd-Result: default: false [3.50 / 15.00]
+X-Spamd-Result: default: False [3.50 / 15.00]
+From: a@b
+To: c@d
+Subject: x
+
+body
