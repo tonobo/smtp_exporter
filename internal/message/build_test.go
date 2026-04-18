@@ -6,6 +6,28 @@ import (
 	"testing"
 )
 
+func TestBuild_HasAutoSubmittedHeader(t *testing.T) {
+	got := Build(Input{
+		ProbeID:  "22222222-2222-2222-2222-222222222222",
+		From:     "probe@forststack.de",
+		To:       "forststack@gmail.com",
+		Hostname: "exporter.example",
+	})
+
+	if !strings.Contains(got.RFC5322, "Auto-Submitted: auto-generated\r\n") {
+		t.Fatalf("missing Auto-Submitted header in:\n%s", got.RFC5322)
+	}
+
+	// Verify it also parses cleanly via net/mail.
+	msg, err := mail.ReadMessage(strings.NewReader(got.RFC5322))
+	if err != nil {
+		t.Fatalf("parse rfc5322: %v", err)
+	}
+	if got := msg.Header.Get("Auto-Submitted"); got != "auto-generated" {
+		t.Fatalf("Auto-Submitted = %q, want auto-generated", got)
+	}
+}
+
 func TestBuild_HeadersAndID(t *testing.T) {
 	got := Build(Input{
 		ProbeID:  "11111111-1111-1111-1111-111111111111",

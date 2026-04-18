@@ -40,6 +40,10 @@ func Build(in Input) Built {
 	w("Date", now.UTC().Format(time.RFC1123Z))
 	w("Message-ID", msgID)
 	w("X-Probe-ID", in.ProbeID)
+	// RFC 3834 — machine-generated monitoring mail. Receivers (especially
+	// Gmail) use this to exclude the message from engagement-based
+	// reputation calculations while still honoring auth (SPF/DKIM/DMARC).
+	w("Auto-Submitted", "auto-generated")
 	w("MIME-Version", "1.0")
 	w("Content-Type", "text/plain; charset=utf-8")
 	b.WriteString("\r\n")
