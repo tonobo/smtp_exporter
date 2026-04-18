@@ -125,6 +125,8 @@ All probe-specific metrics are prefixed `probe_`. `*_found` gauges are `0|1` so 
 | `probe_imap_cleanup_deleted_count` | gauge | — | Number of mails deleted in cleanup. |
 | `probe_imap_folder_info` | gauge | `folder` | 1 for the folder where probe mail was detected. Values: `inbox`, `spam`, `junk`, `other`. |
 | `probe_imap_spam_detected` | gauge | — | 1 if probe was delivered to a spam/junk folder. Useful as alert signal. |
+| `probe_imap_spam_trained_total` | counter | — | 1 if a spam-to-inbox MOVE was issued for this probe (move_from_spam). Resets per scrape. |
+| `probe_imap_spam_train_failed_total` | counter | — | 1 if the spam-to-inbox MOVE failed for this probe. |
 | `probe_sender_ip_found` | gauge | — | 1 if a public sender IP was extracted. |
 | `probe_sender_ip_info` | gauge | `ip` | 1 for the extracted sender IP. |
 | `probe_dnsbl_checked` | gauge | `zone` | 1 if the zone was queried. |
@@ -166,6 +168,18 @@ SPECIAL-USE (RFC 6154), then well-known names (`Spam`, `Junk`, `[Gmail]/Spam`,
 `Junk Mail`, `Junk E-mail`). The first match wins. `probe_imap_folder_info{folder="spam"} 1`
 is the signal that authentication passed but the recipient's filter quarantined
 the mail.
+
+### Spam-training mode
+
+Set `global.cleanup.move_from_spam: true` to auto-move probe mail from
+a spam/junk folder back to INBOX after detection. For Gmail this acts
+as a "Not spam" training signal (weaker than clicking the web UI
+button, but measurable over time). Opt-in; default off.
+
+When enabled, the per-probe mark-deleted+expunge cleanup is skipped for
+spam→inbox moves; the age-based sweep (max_age) handles eventual
+cleanup so moved mail stays in the inbox long enough to count as
+positive engagement.
 
 ## Probe mail headers
 
