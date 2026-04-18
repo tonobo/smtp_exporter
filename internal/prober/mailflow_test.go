@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"strings"
 	"sync"
@@ -135,7 +136,8 @@ func TestMailflow_EndToEnd(t *testing.T) {
 	}
 
 	reg := prometheus.NewRegistry()
-	ok := Run(context.Background(), mod, glb, r, reg)
+	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	ok := Run(context.Background(), logger, mod, "e2e", glb, r, reg)
 	if !ok {
 		dumpReg(t, reg)
 		t.Fatal("probe failed")

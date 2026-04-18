@@ -35,6 +35,7 @@ type Result struct {
 	TLSVersion         string
 	TLSCertExpire      time.Time
 	TLSFingerprint     string
+	Message            string // server-side human-readable reply (from SMTPError.Message)
 }
 
 // Send connects, optionally negotiates TLS, authenticates if credentials are
@@ -155,6 +156,7 @@ func recordSMTPErr(r *Result, err error) {
 	var se *esmtp.SMTPError
 	if errors.As(err, &se) {
 		r.StatusCode = se.Code
+		r.Message = se.Message
 		if len(se.EnhancedCode) == 3 {
 			r.EnhancedStatusCode = se.EnhancedCode[0]*100 + se.EnhancedCode[1]*10 + se.EnhancedCode[2]
 		}

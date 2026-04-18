@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"html"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"time"
@@ -22,6 +23,7 @@ import (
 
 // Handler wires HTTP routes to the prober and shared state.
 type Handler struct {
+	Logger   *slog.Logger
 	Config   *config.SafeConfig
 	Resolver pdns.Resolver
 	History  *History
@@ -32,8 +34,8 @@ type Handler struct {
 }
 
 // NewHandler constructs a Handler and registers exporter-internal metrics.
-func NewHandler(sc *config.SafeConfig, r pdns.Resolver, reload func() error, internalReg prometheus.Registerer) *Handler {
-	h := &Handler{Config: sc, Resolver: r, Reload: reload, History: NewHistory(100)}
+func NewHandler(logger *slog.Logger, sc *config.SafeConfig, r pdns.Resolver, reload func() error, internalReg prometheus.Registerer) *Handler {
+	h := &Handler{Logger: logger, Config: sc, Resolver: r, Reload: reload, History: NewHistory(100)}
 	h.unknownModule = prometheus.NewCounter(prometheus.CounterOpts{Name: "smtp_exporter_unknown_module_total", Help: "Count of probes requesting an unknown module."})
 	h.probeTotal = prometheus.NewCounterVec(prometheus.CounterOpts{Name: "smtp_exporter_probes_total", Help: "Count of probes by module and outcome."}, []string{"module", "outcome"})
 	internalReg.MustRegister(h.unknownModule, h.probeTotal)
@@ -68,7 +70,7 @@ func (h *Handler) probe(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	reg := prometheus.NewRegistry()
-	ok = prober.Run(ctx, mod, cfg.Global, h.Resolver, reg)
+	ok = prober.Run(ctx, h.Logger, mod, name, cfg.Global, h.Resolver, reg)
 
 	outcome := "failure"
 	if ok {

@@ -2,6 +2,7 @@ package server
 
 import (
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -13,9 +14,13 @@ import (
 	pdns "github.com/tonobo/smtp_exporter/internal/dns"
 )
 
+func discardLogger() *slog.Logger {
+	return slog.New(slog.NewJSONHandler(io.Discard, nil))
+}
+
 func TestProbe_UnknownModule(t *testing.T) {
 	sc := config.NewSafeConfig()
-	h := NewHandler(sc, pdns.NewFake(), func() error { return nil }, prometheus.NewRegistry())
+	h := NewHandler(discardLogger(), sc, pdns.NewFake(), func() error { return nil }, prometheus.NewRegistry())
 	mux := http.NewServeMux()
 	h.Register(mux)
 
@@ -34,7 +39,7 @@ func TestProbe_UnknownModule(t *testing.T) {
 
 func TestHealth(t *testing.T) {
 	sc := config.NewSafeConfig()
-	h := NewHandler(sc, pdns.NewFake(), func() error { return nil }, prometheus.NewRegistry())
+	h := NewHandler(discardLogger(), sc, pdns.NewFake(), func() error { return nil }, prometheus.NewRegistry())
 	mux := http.NewServeMux()
 	h.Register(mux)
 

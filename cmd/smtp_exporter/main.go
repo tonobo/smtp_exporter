@@ -63,7 +63,7 @@ func run() int {
 		}
 	}()
 
-	h := server.NewHandler(sc, pdns.System(), reload, prometheus.DefaultRegisterer)
+	h := server.NewHandler(logger, sc, pdns.System(), reload, prometheus.DefaultRegisterer)
 	mux := http.NewServeMux()
 	h.Register(mux)
 

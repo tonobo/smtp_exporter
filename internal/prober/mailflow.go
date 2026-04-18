@@ -3,6 +3,7 @@ package prober
 
 import (
 	"context"
+	"log/slog"
 	"net/mail"
 	"os"
 	"strings"
@@ -22,11 +23,14 @@ import (
 
 // Run executes the mailflow probe for the given module and records all
 // observations on reg. Returns whether the probe succeeded overall.
-func Run(ctx context.Context, m config.Module, g config.Global, r pdns.Resolver, reg *prometheus.Registry) bool {
+func Run(ctx context.Context, logger *slog.Logger, m config.Module, moduleName string, g config.Global, r pdns.Resolver, reg *prometheus.Registry) bool {
 	fm := newFlowMetrics(reg)
 	start := time.Now()
+	success := false
+	logger.Info("probe start", "module", moduleName)
 	defer func() {
 		fm.duration.Set(time.Since(start).Seconds())
+		logger.Info("probe complete", "module", moduleName, "success", success, "duration_seconds", time.Since(start).Seconds())
 	}()
 
 	hostname, _ := os.Hostname()
@@ -64,6 +68,12 @@ func Run(ctx context.Context, m config.Module, g config.Global, r pdns.Resolver,
 	}
 
 	if !sendRes.Success {
+		logger.Warn("smtp send failed",
+			"module", moduleName,
+			"status_code", sendRes.StatusCode,
+			"enhanced_status_code", sendRes.EnhancedStatusCode,
+			"server_message", sendRes.Message,
+		)
 		return false
 	}
 	sendDone := time.Now()
@@ -77,9 +87,10 @@ func Run(ctx context.Context, m config.Module, g config.Global, r pdns.Resolver,
 	}, built.Subject)
 	fm.phaseDuration.WithLabelValues("imap").Set(time.Since(imapStart).Seconds())
 	if err != nil {
+		logger.Warn("imap wait failed", "module", moduleName, "error", err.Error())
 		fm.imapLoginSuccess.Set(boolToFloat(!strings.Contains(err.Error(), "login")))
 		fm.imapMessageReceived.Set(0)
-		runCleanup(ctx, m, g, fm)
+		runCleanup(ctx, logger, moduleName, m, g, fm)
 		return false
 	}
 	fm.imapLoginSuccess.Set(1)
@@ -92,9 +103,10 @@ func Run(ctx context.Context, m config.Module, g config.Global, r pdns.Resolver,
 	fm.phaseDuration.WithLabelValues("parse").Set(time.Since(parseStart).Seconds())
 
 	// Cleanup
-	runCleanup(ctx, m, g, fm)
+	runCleanup(ctx, logger, moduleName, m, g, fm)
 
 	fm.success.Set(1)
+	success = true
 	return true
 }
 
@@ -130,7 +142,7 @@ func parseReceivedMail(fm *flowMetrics, raw []byte, r pdns.Resolver, g config.Gl
 	fm.spam.Observe(msg.Header)
 }
 
-func runCleanup(ctx context.Context, m config.Module, g config.Global, fm *flowMetrics) {
+func runCleanup(ctx context.Context, logger *slog.Logger, moduleName string, m config.Module, g config.Global, fm *flowMetrics) {
 	if !g.Cleanup.Enabled {
 		return
 	}
@@ -139,9 +151,11 @@ func runCleanup(ctx context.Context, m config.Module, g config.Global, fm *flowM
 		Username: m.IMAP.Auth.Username, Password: m.IMAP.Auth.Password,
 		Mailbox: m.IMAP.Mailbox, PollInterval: m.IMAP.PollInterval,
 	}, g.Cleanup.MaxAge)
-	if err == nil {
-		fm.imapCleanupDeleted.Set(float64(n))
+	if err != nil {
+		logger.Warn("imap cleanup failed", "module", moduleName, "error", err.Error())
+		return
 	}
+	fm.imapCleanupDeleted.Set(float64(n))
 }
 
 func writeSMTPMetrics(fm *flowMetrics, r psmtp.Result) {
