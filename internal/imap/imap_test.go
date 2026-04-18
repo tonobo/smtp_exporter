@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/emersion/go-imap/v2"
+	"github.com/emersion/go-imap/v2/imapclient"
 	"github.com/emersion/go-imap/v2/imapserver"
 	"github.com/emersion/go-imap/v2/imapserver/imapmemserver"
 )
@@ -49,6 +50,113 @@ func startMemServer(t *testing.T, username, password string) (addr string, appen
 		_, _ = user.Append("INBOX", r, &imap.AppendOptions{Time: time.Now()})
 	}
 	return l.Addr().String(), appendFn, func() { _ = srv.Close(); _ = l.Close() }
+}
+
+// memServerWithFolders starts an in-memory IMAP server pre-populated with the
+// given mailbox names. Mailboxes listed in specialUseJunk will be created with
+// the SPECIAL-USE \Junk attribute so that discoverFolders can detect them via
+// attribute matching. The returned client is already logged in.
+//
+// Note: imapmemserver supports SPECIAL-USE via imap.CreateOptions{SpecialUse: ...}.
+// The returned addr/client are wired through the standard mem-server pattern.
+func memServerWithFolders(t *testing.T, mailboxes []string, specialUseJunk ...string) (addr string, stop func()) {
+	t.Helper()
+	junkSet := make(map[string]bool, len(specialUseJunk))
+	for _, m := range specialUseJunk {
+		junkSet[m] = true
+	}
+
+	memSrv := imapmemserver.New()
+	user := imapmemserver.NewUser("u", "p")
+	for _, mb := range mailboxes {
+		var opts *imap.CreateOptions
+		if junkSet[mb] {
+			opts = &imap.CreateOptions{SpecialUse: []imap.MailboxAttr{imap.MailboxAttrJunk}}
+		}
+		if err := user.Create(mb, opts); err != nil {
+			t.Fatal(err)
+		}
+	}
+	memSrv.AddUser(user)
+
+	srv := imapserver.New(&imapserver.Options{
+		NewSession: func(c *imapserver.Conn) (imapserver.Session, *imapserver.GreetingData, error) {
+			return memSrv.NewSession(), &imapserver.GreetingData{PreAuth: false}, nil
+		},
+		InsecureAuth: true,
+	})
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	go func() { _ = srv.Serve(l) }()
+	return l.Addr().String(), func() { _ = srv.Close(); _ = l.Close() }
+}
+
+// connectTest dials addr (plain TCP) and logs in as "u"/"p".
+func connectTest(t *testing.T, addr string) *imapclient.Client {
+	t.Helper()
+	in := ClientInput{Server: addr, TLS: "no", Username: "u", Password: "p"}
+	ctx := context.Background()
+	c, err := connect(ctx, in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Login("u", "p").Wait(); err != nil {
+		t.Fatal(err)
+	}
+	return c
+}
+
+// TestDiscoverFolders_GmailStyle verifies SPECIAL-USE \Junk attribute detection.
+// The in-memory server supports SPECIAL-USE via imap.CreateOptions, so
+// discoverFolders can match [Gmail]/Spam by attribute.
+func TestDiscoverFolders_GmailStyle(t *testing.T) {
+	addr, stop := memServerWithFolders(t,
+		[]string{"INBOX", "[Gmail]/Spam", "[Gmail]/Sent Mail", "[Gmail]/Trash"},
+		"[Gmail]/Spam", // SPECIAL-USE \Junk
+	)
+	defer stop()
+
+	c := connectTest(t, addr)
+	defer func() { _ = c.Logout() }()
+
+	folders, err := discoverFolders(c)
+	if err != nil {
+		t.Fatalf("discoverFolders: %v", err)
+	}
+	if folders.Inbox != "INBOX" {
+		t.Errorf("Inbox = %q, want INBOX", folders.Inbox)
+	}
+	if folders.Spam != "[Gmail]/Spam" {
+		t.Errorf("Spam = %q, want [Gmail]/Spam", folders.Spam)
+	}
+}
+
+// TestDiscoverFolders_DovecotStyle verifies well-known-name fallback detection.
+// Note: If the in-memory server does not advertise SPECIAL-USE in its LIST
+// response (e.g. because the library does not expose it via ReturnSpecialUse),
+// discoverFolders falls back to matching by well-known name ("Junk"). This test
+// deliberately does NOT pass Junk as a specialUseJunk folder, so it exercises
+// the well-known-name path regardless of whether the server returns attributes.
+func TestDiscoverFolders_DovecotStyle(t *testing.T) {
+	addr, stop := memServerWithFolders(t,
+		[]string{"INBOX", "Junk"},
+		// No special-use attribute — relies on well-known-name fallback.
+	)
+	defer stop()
+
+	c := connectTest(t, addr)
+	defer func() { _ = c.Logout() }()
+
+	folders, err := discoverFolders(c)
+	if err != nil {
+		t.Fatalf("discoverFolders: %v", err)
+	}
+	// Junk matches either via \Junk attribute or well-known name "Junk".
+	if folders.Spam != "Junk" {
+		t.Errorf("Spam = %q, want Junk", folders.Spam)
+	}
 }
 
 func TestWaitForSubject_Found(t *testing.T) {

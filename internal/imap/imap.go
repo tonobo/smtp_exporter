@@ -8,11 +8,58 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"strings"
 	"time"
 
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapclient"
 )
+
+// Folders holds the discovered mailbox names for a connected account.
+// Empty string means the folder was not found on this server.
+type Folders struct {
+	Inbox string // always "INBOX"
+	Spam  string // "" if not found — may be set by either \Junk attr or well-known name
+	Junk  string // "" if not found — set when \Junk attr is present
+}
+
+// discoverFolders issues LIST "" "*" with RETURN SPECIAL-USE and categorizes
+// mailboxes by the \Junk attribute first, then by well-known names. Returns
+// empty strings for folders not present on this server.
+func discoverFolders(c *imapclient.Client) (Folders, error) {
+	var f Folders
+	f.Inbox = "INBOX"
+
+	mailboxes, err := c.List("", "*", &imap.ListOptions{ReturnSpecialUse: true}).Collect()
+	if err != nil {
+		return f, fmt.Errorf("imap list: %w", err)
+	}
+
+	// Attribute match wins over name match.
+	for _, mb := range mailboxes {
+		for _, attr := range mb.Attrs {
+			if attr == imap.MailboxAttrJunk {
+				f.Junk = mb.Mailbox
+				f.Spam = mb.Mailbox // alias: Spam always points to where spam lives
+			}
+		}
+	}
+	if f.Spam != "" {
+		return f, nil
+	}
+
+	// Fallback: well-known names (case-insensitive).
+	wellKnown := []string{"[Gmail]/Spam", "Spam", "Junk", "Junk Mail", "Junk E-mail"}
+	for _, mb := range mailboxes {
+		for _, wk := range wellKnown {
+			if strings.EqualFold(mb.Mailbox, wk) {
+				f.Spam = mb.Mailbox
+				return f, nil
+			}
+		}
+	}
+	return f, nil
+}
 
 // ClientInput describes an IMAP connection target.
 type ClientInput struct {
