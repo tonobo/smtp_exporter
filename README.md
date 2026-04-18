@@ -123,6 +123,8 @@ All probe-specific metrics are prefixed `probe_`. `*_found` gauges are `0|1` so 
 | `probe_imap_message_received` | gauge | — | 1 if the probe mail was found. |
 | `probe_imap_delivery_seconds` | gauge | — | Seconds from SMTP done to IMAP detected. |
 | `probe_imap_cleanup_deleted_count` | gauge | — | Number of mails deleted in cleanup. |
+| `probe_imap_folder_info` | gauge | `folder` | 1 for the folder where probe mail was detected. Values: `inbox`, `spam`, `junk`, `other`. |
+| `probe_imap_spam_detected` | gauge | — | 1 if probe was delivered to a spam/junk folder. Useful as alert signal. |
 | `probe_sender_ip_found` | gauge | — | 1 if a public sender IP was extracted. |
 | `probe_sender_ip_info` | gauge | `ip` | 1 for the extracted sender IP. |
 | `probe_dnsbl_checked` | gauge | `zone` | 1 if the zone was queried. |
@@ -156,6 +158,22 @@ scrape_configs:
 ```
 
 `scrape_timeout` must exceed module `timeout`.
+
+## Multi-folder detection
+
+The probe searches INBOX first, then any folder marked `\Junk` via IMAP
+SPECIAL-USE (RFC 6154), then well-known names (`Spam`, `Junk`, `[Gmail]/Spam`,
+`Junk Mail`, `Junk E-mail`). The first match wins. `probe_imap_folder_info{folder="spam"} 1`
+is the signal that authentication passed but the recipient's filter quarantined
+the mail.
+
+## Probe mail headers
+
+Each probe mail includes `Auto-Submitted: auto-generated` (RFC 3834). This
+tells receiving MTAs — notably Gmail — that the message is machine-generated
+monitoring mail, not user-to-user correspondence. Gmail uses this header to
+exclude the probe from engagement-based reputation scoring (open rate, reply
+rate) while still honouring SPF/DKIM/DMARC authentication results.
 
 ## Development
 
