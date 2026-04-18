@@ -3,6 +3,7 @@ package prober
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/mail"
 	"os"
@@ -97,7 +98,7 @@ func Run(ctx context.Context, logger *slog.Logger, m config.Module, moduleName s
 
 	// IMAP receive — poll INBOX first, then spam folder if discovered.
 	imapStart := time.Now()
-	raw, folderFound, err := imap.WaitForSubject(ctx, imapIn, built.Subject, pollFolders)
+	raw, folderFound, foundUID, err := imap.WaitForSubject(ctx, imapIn, built.Subject, pollFolders)
 	fm.phaseDuration.WithLabelValues("imap").Set(time.Since(imapStart).Seconds())
 	if err != nil {
 		logger.Warn("imap wait failed", "module", moduleName, "error", err.Error())
@@ -111,12 +112,32 @@ func Run(ctx context.Context, logger *slog.Logger, m config.Module, moduleName s
 	fm.imapDelivery.Set(time.Since(sendDone).Seconds())
 
 	// Emit folder placement metrics.
+	spamMoved := false
 	if folderFound != "" {
 		category := classifyFolder(folderFound)
 		fm.imapFolderInfo.WithLabelValues(category).Set(1)
 		if category == "spam" || category == "junk" {
 			fm.imapSpamDetected.Set(1)
 			logger.Info("probe mail landed in spam/junk folder", "module", moduleName, "folder", folderFound)
+
+			// Spam-training: move probe mail back to INBOX to signal "not spam".
+			if g.Cleanup.MoveFromSpam {
+				moved, err := imap.MoveToInbox(ctx, imapIn, folderFound, foundUID)
+				if err != nil {
+					logger.Warn("spam-to-inbox move failed",
+						"module", moduleName,
+						"folder", folderFound,
+						"error", err.Error())
+					fm.imapSpamTrainFailed.Inc()
+				} else if moved {
+					logger.Info("moved probe from spam to inbox",
+						"module", moduleName,
+						"folder", folderFound,
+						"uid", fmt.Sprint(foundUID))
+					fm.imapSpamTrained.Inc()
+					spamMoved = true
+				}
+			}
 		}
 	}
 
@@ -126,11 +147,21 @@ func Run(ctx context.Context, logger *slog.Logger, m config.Module, moduleName s
 	fm.phaseDuration.WithLabelValues("parse").Set(time.Since(parseStart).Seconds())
 
 	// Cleanup — target the folder where the message was found.
-	cleanupMailbox := m.IMAP.Mailbox
-	if folderFound != "" {
-		cleanupMailbox = folderFound
+	// When move_from_spam triggered a successful MOVE, the message is now in
+	// INBOX and the source spam folder is already empty. Skip the per-probe
+	// mark-deleted+expunge so the mail stays in INBOX long enough for the
+	// age-based sweep (max_age) to act as a positive engagement signal.
+	// The sweep will eventually remove it from INBOX.
+	if !spamMoved {
+		cleanupMailbox := m.IMAP.Mailbox
+		if folderFound != "" {
+			cleanupMailbox = folderFound
+		}
+		runCleanup(ctx, logger, moduleName, m, g, fm, cleanupMailbox)
+	} else {
+		// Still run the age-based sweep on INBOX to clean up old probes.
+		runCleanup(ctx, logger, moduleName, m, g, fm, m.IMAP.Mailbox)
 	}
-	runCleanup(ctx, logger, moduleName, m, g, fm, cleanupMailbox)
 
 	fm.success.Set(1)
 	success = true

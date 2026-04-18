@@ -23,12 +23,18 @@ type flowMetrics struct {
 	smtpTLSFingerprint *prometheus.GaugeVec
 
 	// imap
-	imapLoginSuccess    prometheus.Gauge
-	imapMessageReceived prometheus.Gauge
-	imapDelivery        prometheus.Gauge
-	imapCleanupDeleted  prometheus.Gauge
-	imapFolderInfo      *prometheus.GaugeVec
-	imapSpamDetected    prometheus.Gauge
+	imapLoginSuccess      prometheus.Gauge
+	imapMessageReceived   prometheus.Gauge
+	imapDelivery          prometheus.Gauge
+	imapCleanupDeleted    prometheus.Gauge
+	imapFolderInfo        *prometheus.GaugeVec
+	imapSpamDetected      prometheus.Gauge
+	// imapSpamTrained and imapSpamTrainFailed are counters. Because the
+	// Prometheus registry is created fresh per probe scrape (stateless), these
+	// counters reset on every probe invocation — they signal whether *this*
+	// probe attempt triggered a spam-to-inbox move, not a cumulative total.
+	imapSpamTrained      prometheus.Counter
+	imapSpamTrainFailed  prometheus.Counter
 
 	// sender ip
 	senderIPFound prometheus.Gauge
@@ -68,6 +74,8 @@ func newFlowMetrics(reg prometheus.Registerer) *flowMetrics {
 		imapCleanupDeleted:  prometheus.NewGauge(prometheus.GaugeOpts{Name: "probe_imap_cleanup_deleted_count", Help: "Number of mails deleted in cleanup (target + sweep)."}),
 		imapFolderInfo:      prometheus.NewGaugeVec(prometheus.GaugeOpts{Name: "probe_imap_folder_info", Help: "1 for the folder where the probe message was detected (inbox, spam, junk, other)."}, []string{"folder"}),
 		imapSpamDetected:    prometheus.NewGauge(prometheus.GaugeOpts{Name: "probe_imap_spam_detected", Help: "1 if the probe message was delivered but landed in a spam/junk folder."}),
+		imapSpamTrained:     prometheus.NewCounter(prometheus.CounterOpts{Name: "probe_imap_spam_trained_total", Help: "1 if a spam-to-inbox MOVE was issued for this probe (move_from_spam)."}),
+		imapSpamTrainFailed: prometheus.NewCounter(prometheus.CounterOpts{Name: "probe_imap_spam_train_failed_total", Help: "1 if the spam-to-inbox MOVE failed for this probe."}),
 
 		senderIPFound: prometheus.NewGauge(prometheus.GaugeOpts{Name: "probe_sender_ip_found", Help: "1 if a public sender IP was extracted from the Received chain."}),
 		senderIPInfo:  prometheus.NewGaugeVec(prometheus.GaugeOpts{Name: "probe_sender_ip_info", Help: "1 for the extracted sender IP."}, []string{"ip"}),
@@ -85,6 +93,7 @@ func newFlowMetrics(reg prometheus.Registerer) *flowMetrics {
 		m.smtpTLS, m.smtpTLSVersion, m.smtpTLSCertExpire, m.smtpTLSFingerprint,
 		m.imapLoginSuccess, m.imapMessageReceived, m.imapDelivery, m.imapCleanupDeleted,
 		m.imapFolderInfo, m.imapSpamDetected,
+		m.imapSpamTrained, m.imapSpamTrainFailed,
 		m.senderIPFound, m.senderIPInfo,
 		m.dnsblChecked, m.dnsblListed, m.dnsblDuration,
 		m.spfRecordFound, m.spfRecordInfo,

@@ -269,6 +269,97 @@ func TestMailflow_SpamPlacementEmitsMetric(t *testing.T) {
 	assertGaugeLabel(t, reg, "probe_imap_folder_info", map[string]string{"folder": "spam"}, 1)
 }
 
+// TestMailflow_MovesProbeFromSpam verifies that when move_from_spam is true and
+// the probe mail lands in spam, the prober moves it to INBOX and emits
+// probe_imap_spam_trained_total=1.
+func TestMailflow_MovesProbeFromSpam(t *testing.T) {
+	const spamFolder = "[Gmail]/Spam"
+
+	// IMAP mem server with INBOX + Spam (SPECIAL-USE \Junk).
+	memSrv := imapmemserver.New()
+	user := imapmemserver.NewUser("target@other", "pass")
+	if err := user.Create("INBOX", nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := user.Create(spamFolder, &imap.CreateOptions{SpecialUse: []imap.MailboxAttr{imap.MailboxAttrJunk}}); err != nil {
+		t.Fatal(err)
+	}
+	memSrv.AddUser(user)
+	imapSrv := imapserver.New(&imapserver.Options{
+		InsecureAuth: true,
+		NewSession: func(_ *imapserver.Conn) (imapserver.Session, *imapserver.GreetingData, error) {
+			return memSrv.NewSession(), &imapserver.GreetingData{PreAuth: false}, nil
+		}})
+	il, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	go func() { _ = imapSrv.Serve(il) }()
+	defer func() { _ = imapSrv.Close(); _ = il.Close() }()
+
+	// SMTP fake: delivers into [Gmail]/Spam.
+	beh := &spamBackend{imapUser: user, spamMailbox: spamFolder}
+	smtpSrv := esmtp.NewServer(beh)
+	smtpSrv.Domain = "test"
+	smtpSrv.AllowInsecureAuth = true
+	sl, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	go func() { _ = smtpSrv.Serve(sl) }()
+	defer func() { _ = smtpSrv.Close(); _ = sl.Close() }()
+
+	mod := config.Module{
+		Prober:  "mailflow",
+		Timeout: 5 * time.Second,
+		SMTP: config.SMTP{
+			Server:   sl.Addr().String(),
+			TLS:      "no",
+			EHLO:     "test",
+			MailFrom: "probe@example.org",
+			MailTo:   "target@other",
+			Auth:     config.Auth{Username: "u", Password: "p"},
+		},
+		IMAP: config.IMAP{
+			Server:       il.Addr().String(),
+			TLS:          "no",
+			Mailbox:      "INBOX",
+			PollInterval: 200 * time.Millisecond,
+			Auth:         config.Auth{Username: "target@other", Password: "pass"},
+		},
+	}
+	glb := config.Global{
+		Cleanup: config.Cleanup{Enabled: false, MoveFromSpam: true},
+	}
+
+	reg := prometheus.NewRegistry()
+	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	ok := Run(context.Background(), logger, mod, "spam_move_test", glb, pdns.NewFake(), reg)
+	if !ok {
+		dumpReg(t, reg)
+		t.Fatal("probe failed")
+	}
+
+	assertCounter(t, reg, "probe_imap_spam_trained_total", 1)
+	assertGauge(t, reg, "probe_imap_spam_detected", 1)
+}
+
+func assertCounter(t *testing.T, reg *prometheus.Registry, name string, want float64) {
+	t.Helper()
+	mfs, _ := reg.Gather()
+	for _, mf := range mfs {
+		if mf.GetName() != name {
+			continue
+		}
+		for _, mt := range mf.GetMetric() {
+			if got := mt.GetCounter().GetValue(); got == want {
+				return
+			}
+		}
+	}
+	t.Fatalf("counter %s != %v", name, want)
+}
+
 func assertGauge(t *testing.T, reg *prometheus.Registry, name string, want float64) {
 	t.Helper()
 	mfs, _ := reg.Gather()
