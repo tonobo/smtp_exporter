@@ -37,7 +37,7 @@ func Run(ctx context.Context, logger *slog.Logger, m config.Module, moduleName s
 	hostname, _ := os.Hostname()
 	probeID := uuid.New().String()
 	built := message.Build(message.Input{
-		ProbeID: probeID, From: m.SMTP.MailFrom, To: m.SMTP.MailTo, Hostname: hostname,
+		ProbeID: probeID, From: m.SMTP.MailFrom, To: m.SMTP.MailTo, Hostname: hostname, ModuleName: moduleName,
 	})
 
 	// SPF lookup runs concurrently with SMTP send.

@@ -28,6 +28,64 @@ func TestBuild_HasAutoSubmittedHeader(t *testing.T) {
 	}
 }
 
+func TestBuild_HasAutoResponseSuppressHeader(t *testing.T) {
+	got := Build(Input{ProbeID: "abc", From: "a@b.c", To: "x@y.z", Hostname: "h", ModuleName: "example"})
+	if !strings.Contains(got.RFC5322, "\r\nX-Auto-Response-Suppress: All\r\n") {
+		t.Fatalf("missing X-Auto-Response-Suppress header in:\n%s", got.RFC5322)
+	}
+}
+
+func TestBuild_HasUserAgentHeader(t *testing.T) {
+	got := Build(Input{ProbeID: "abc", From: "a@b.c", To: "x@y.z", Hostname: "h", ModuleName: "example"})
+	if !strings.Contains(got.RFC5322, "User-Agent: smtp_exporter/") {
+		t.Fatalf("missing User-Agent header in:\n%s", got.RFC5322)
+	}
+	if !strings.Contains(got.RFC5322, "(+https://github.com/tonobo/smtp_exporter)") {
+		t.Fatalf("User-Agent missing repo URL in:\n%s", got.RFC5322)
+	}
+}
+
+func TestBuild_HasFeedbackID(t *testing.T) {
+	got := Build(Input{ProbeID: "abc", From: "probe@example.org", To: "x@y.z", Hostname: "h", ModuleName: "stalwart_to_gmail"})
+	if !strings.Contains(got.RFC5322, "Feedback-ID: probe:example.org:stalwart_to_gmail:smtp_exporter") {
+		t.Fatalf("missing/wrong Feedback-ID in:\n%s", got.RFC5322)
+	}
+}
+
+func TestBuild_MessageIDUsesFromDomain(t *testing.T) {
+	got := Build(Input{
+		ProbeID: "abc", From: "probe@example.org",
+		To: "x@y.z", Hostname: "some-pod-name-12345",
+		ModuleName: "example",
+	})
+	// Message-ID domain must be example.org, NOT some-pod-name-12345
+	if !strings.Contains(got.RFC5322, "Message-ID: <abc@example.org>") {
+		t.Fatalf("message-id domain wrong: %q", got.RFC5322)
+	}
+}
+
+func TestBuild_ReputationHeadersPresent(t *testing.T) {
+	got := Build(Input{
+		ProbeID: "abc", From: "probe@example.org",
+		To: "x@y.z", Hostname: "h", ModuleName: "stalwart_to_gmail",
+	})
+	wantSubstrings := []string{
+		"Auto-Submitted: auto-generated\r\n",
+		"X-Auto-Response-Suppress: All\r\n",
+		"User-Agent: smtp_exporter/",
+		"(+https://github.com/tonobo/smtp_exporter)",
+		"Feedback-ID: probe:example.org:stalwart_to_gmail:smtp_exporter\r\n",
+		"MT-Priority: -4 (NON-URGENT)\r\n",
+		"Importance: Low\r\n",
+		"X-Priority: 5\r\n",
+	}
+	for _, s := range wantSubstrings {
+		if !strings.Contains(got.RFC5322, s) {
+			t.Errorf("missing %q in:\n%s", s, got.RFC5322)
+		}
+	}
+}
+
 func TestBuild_HeadersAndID(t *testing.T) {
 	got := Build(Input{
 		ProbeID:  "11111111-1111-1111-1111-111111111111",

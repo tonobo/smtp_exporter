@@ -183,11 +183,21 @@ positive engagement.
 
 ## Probe mail headers
 
-Each probe mail includes `Auto-Submitted: auto-generated` (RFC 3834). This
-tells receiving MTAs — notably Gmail — that the message is machine-generated
-monitoring mail, not user-to-user correspondence. Gmail uses this header to
-exclude the probe from engagement-based reputation scoring (open rate, reply
-rate) while still honouring SPF/DKIM/DMARC authentication results.
+Every probe carries these identification and priority headers so receivers
+can handle it appropriately:
+
+- `Auto-Submitted: auto-generated` (RFC 3834) — machine-generated
+- `X-Auto-Response-Suppress: All` — suppress OOF/read/delivery receipts on
+  Exchange/Outlook to prevent mail loops
+- `User-Agent: smtp_exporter/<version> (+repo URL)` — honest software ID
+- `Feedback-ID: probe:<sender-domain>:<module>:smtp_exporter` — Gmail
+  Postmaster Tools bucket, isolates probe traffic from your main reputation
+- `MT-Priority: -4 (NON-URGENT)` (RFC 6758) — low priority hint for MTAs
+- `Importance: Low` / `X-Priority: 5` — low priority hints for mail clients
+
+Message-ID is generated with the sender's From-domain (not the pod hostname)
+so the domain aligns with the SPF/DKIM identities and doesn't trigger
+MSGID_FROM_MTA_HEADER-style anti-spam rules.
 
 ## Development
 
