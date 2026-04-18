@@ -80,11 +80,11 @@ func Run(ctx context.Context, logger *slog.Logger, m config.Module, moduleName s
 
 	// IMAP receive
 	imapStart := time.Now()
-	raw, err := imap.WaitForSubject(ctx, imap.ClientInput{
+	raw, _, err := imap.WaitForSubject(ctx, imap.ClientInput{
 		Server: m.IMAP.Server, TLS: m.IMAP.TLS,
 		Username: m.IMAP.Auth.Username, Password: m.IMAP.Auth.Password,
 		Mailbox: m.IMAP.Mailbox, PollInterval: m.IMAP.PollInterval,
-	}, built.Subject)
+	}, built.Subject, []string{m.IMAP.Mailbox})
 	fm.phaseDuration.WithLabelValues("imap").Set(time.Since(imapStart).Seconds())
 	if err != nil {
 		logger.Warn("imap wait failed", "module", moduleName, "error", err.Error())

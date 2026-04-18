@@ -72,43 +72,57 @@ type ClientInput struct {
 	TLSConfig    *tls.Config
 }
 
-// WaitForSubject polls the given mailbox every PollInterval until a message
-// with the exact Subject header appears, then returns its raw RFC-5322 bytes.
-func WaitForSubject(ctx context.Context, in ClientInput, subject string) ([]byte, error) {
+// WaitForSubject polls the given folders every PollInterval until a message
+// with the exact Subject header appears in one of them. It returns the raw
+// RFC-5322 bytes of the message, the name of the folder where it was found,
+// and any error. Folders are checked in order; the first match wins.
+//
+// A single-element slice []string{in.Mailbox} reproduces the original
+// single-folder behaviour.
+func WaitForSubject(ctx context.Context, in ClientInput, subject string, folders []string) ([]byte, string, error) {
 	c, err := connect(ctx, in)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	defer c.Logout()
 
 	if err := c.Login(in.Username, in.Password).Wait(); err != nil {
-		return nil, fmt.Errorf("login: %w", err)
+		return nil, "", fmt.Errorf("login: %w", err)
 	}
-	if _, err := c.Select(in.Mailbox, nil).Wait(); err != nil {
-		return nil, fmt.Errorf("select: %w", err)
+
+	// Select the first folder up-front to satisfy servers that require an
+	// initial SELECT before issuing other commands.
+	if len(folders) > 0 {
+		if _, err := c.Select(folders[0], &imap.SelectOptions{ReadOnly: true}).Wait(); err != nil {
+			return nil, "", fmt.Errorf("select: %w", err)
+		}
 	}
 
 	for {
-		// NOOP causes the server to flush any pending untagged responses
-		// (EXISTS, RECENT, etc.) so the SELECTed mailbox view is refreshed
-		// before we search. Without this, most real IMAP servers (Gmail,
-		// Dovecot, Stalwart) only surface UIDs known at SELECT time — newly
-		// delivered messages are invisible until the next reconnect.
-		if err := c.Noop().Wait(); err != nil {
-			return nil, fmt.Errorf("noop: %w", err)
-		}
-
-		uids, err := searchSubject(c, subject)
-		if err != nil {
-			return nil, err
-		}
-		if len(uids) > 0 {
-			return fetchFirst(c, uids[0])
+		for _, folder := range folders {
+			// SELECT (read-only) switches to the folder and refreshes the view.
+			if _, err := c.Select(folder, &imap.SelectOptions{ReadOnly: true}).Wait(); err != nil {
+				continue // skip folders that don't exist or have no permission
+			}
+			// NOOP causes the server to flush any pending untagged responses
+			// (EXISTS, RECENT, etc.) so newly delivered messages become visible.
+			// Most real IMAP servers (Gmail, Dovecot, Stalwart) require this.
+			if err := c.Noop().Wait(); err != nil {
+				return nil, "", fmt.Errorf("noop: %w", err)
+			}
+			uids, err := searchSubject(c, subject)
+			if err != nil {
+				continue
+			}
+			if len(uids) > 0 {
+				raw, fetchErr := fetchFirst(c, uids[0])
+				return raw, folder, fetchErr
+			}
 		}
 
 		select {
 		case <-ctx.Done():
-			return nil, fmt.Errorf("waitForSubject: %w", ctx.Err())
+			return nil, "", fmt.Errorf("waitForSubject: %w", ctx.Err())
 		case <-time.After(in.PollInterval):
 		}
 	}

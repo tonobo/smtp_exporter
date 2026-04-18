@@ -169,12 +169,15 @@ func TestWaitForSubject_Found(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	raw, err := WaitForSubject(ctx, in, "[smtp_exporter] abc-123")
+	raw, folder, err := WaitForSubject(ctx, in, "[smtp_exporter] abc-123", []string{"INBOX"})
 	if err != nil {
 		t.Fatalf("wait: %v", err)
 	}
 	if !strings.Contains(string(raw), "abc-123") {
 		t.Fatalf("body missing id: %q", raw)
+	}
+	if folder != "INBOX" {
+		t.Errorf("folder = %q, want INBOX", folder)
 	}
 }
 
@@ -186,9 +189,58 @@ func TestWaitForSubject_Timeout(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 600*time.Millisecond)
 	defer cancel()
 
-	_, err := WaitForSubject(ctx, in, "not-there")
+	_, _, err := WaitForSubject(ctx, in, "not-there", []string{"INBOX"})
 	if err == nil {
 		t.Fatal("expected timeout error")
+	}
+}
+
+// TestWaitForSubject_FoundInSpam verifies that WaitForSubject detects a message
+// delivered to Spam rather than INBOX when both are in the folder list.
+func TestWaitForSubject_FoundInSpam(t *testing.T) {
+	// Use a richer helper so we can append directly into the Spam folder via the
+	// mem-server user (bypasses the IMAP client APPEND wire format complexity).
+	memSrv := imapmemserver.New()
+	user := imapmemserver.NewUser("u", "p")
+	if err := user.Create("INBOX", nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := user.Create("[Gmail]/Spam", &imap.CreateOptions{SpecialUse: []imap.MailboxAttr{imap.MailboxAttrJunk}}); err != nil {
+		t.Fatal(err)
+	}
+	memSrv.AddUser(user)
+
+	srv := imapserver.New(&imapserver.Options{
+		NewSession: func(c *imapserver.Conn) (imapserver.Session, *imapserver.GreetingData, error) {
+			return memSrv.NewSession(), &imapserver.GreetingData{PreAuth: false}, nil
+		},
+		InsecureAuth: true,
+	})
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	go func() { _ = srv.Serve(l) }()
+	defer func() { _ = srv.Close(); _ = l.Close() }()
+	addr := l.Addr().String()
+
+	subj := "[smtp_exporter] spam-detect-test"
+	raw := "Subject: " + subj + "\r\nX-Probe-ID: spam-test\r\nFrom: a@b\r\nTo: c@d\r\n\r\nbody\r\n"
+	sr := &sizedReader{strings.NewReader(raw), int64(len(raw))}
+	if _, err := user.Append("[Gmail]/Spam", sr, &imap.AppendOptions{Time: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+
+	in := ClientInput{Server: addr, TLS: "no", Username: "u", Password: "p", Mailbox: "INBOX", PollInterval: 100 * time.Millisecond}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	_, folder, err := WaitForSubject(ctx, in, subj, []string{"INBOX", "[Gmail]/Spam"})
+	if err != nil {
+		t.Fatalf("WaitForSubject: %v", err)
+	}
+	if folder != "[Gmail]/Spam" {
+		t.Errorf("folder = %q, want [Gmail]/Spam", folder)
 	}
 }
 
@@ -319,7 +371,7 @@ func TestWaitForSubject_PostSelectDelivery(t *testing.T) {
 	}
 	ch := make(chan result, 1)
 	go func() {
-		raw, err := WaitForSubject(ctx, in, awaitedSubject)
+		raw, _, err := WaitForSubject(ctx, in, awaitedSubject, []string{"INBOX"})
 		ch <- result{raw, err}
 	}()
 
