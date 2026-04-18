@@ -78,32 +78,59 @@ func Run(ctx context.Context, logger *slog.Logger, m config.Module, moduleName s
 	}
 	sendDone := time.Now()
 
-	// IMAP receive
-	imapStart := time.Now()
-	raw, _, err := imap.WaitForSubject(ctx, imap.ClientInput{
+	// Discover IMAP folder layout (INBOX + spam/junk folder if present).
+	imapIn := imap.ClientInput{
 		Server: m.IMAP.Server, TLS: m.IMAP.TLS,
 		Username: m.IMAP.Auth.Username, Password: m.IMAP.Auth.Password,
 		Mailbox: m.IMAP.Mailbox, PollInterval: m.IMAP.PollInterval,
-	}, built.Subject, []string{m.IMAP.Mailbox})
+	}
+	folders, err := imap.DiscoverFolders(ctx, imapIn)
+	if err != nil {
+		logger.Warn("imap folder discovery failed", "module", moduleName, "error", err.Error())
+		// Non-fatal: fall back to INBOX-only polling.
+		folders = imap.Folders{Inbox: m.IMAP.Mailbox}
+	}
+	pollFolders := []string{folders.Inbox}
+	if folders.Spam != "" && folders.Spam != folders.Inbox {
+		pollFolders = append(pollFolders, folders.Spam)
+	}
+
+	// IMAP receive — poll INBOX first, then spam folder if discovered.
+	imapStart := time.Now()
+	raw, folderFound, err := imap.WaitForSubject(ctx, imapIn, built.Subject, pollFolders)
 	fm.phaseDuration.WithLabelValues("imap").Set(time.Since(imapStart).Seconds())
 	if err != nil {
 		logger.Warn("imap wait failed", "module", moduleName, "error", err.Error())
 		fm.imapLoginSuccess.Set(boolToFloat(!strings.Contains(err.Error(), "login")))
 		fm.imapMessageReceived.Set(0)
-		runCleanup(ctx, logger, moduleName, m, g, fm)
+		runCleanup(ctx, logger, moduleName, m, g, fm, m.IMAP.Mailbox)
 		return false
 	}
 	fm.imapLoginSuccess.Set(1)
 	fm.imapMessageReceived.Set(1)
 	fm.imapDelivery.Set(time.Since(sendDone).Seconds())
 
+	// Emit folder placement metrics.
+	if folderFound != "" {
+		category := classifyFolder(folderFound)
+		fm.imapFolderInfo.WithLabelValues(category).Set(1)
+		if category == "spam" || category == "junk" {
+			fm.imapSpamDetected.Set(1)
+			logger.Info("probe mail landed in spam/junk folder", "module", moduleName, "folder", folderFound)
+		}
+	}
+
 	// Parse received mail
 	parseStart := time.Now()
 	parseReceivedMail(fm, raw, r, g)
 	fm.phaseDuration.WithLabelValues("parse").Set(time.Since(parseStart).Seconds())
 
-	// Cleanup
-	runCleanup(ctx, logger, moduleName, m, g, fm)
+	// Cleanup — target the folder where the message was found.
+	cleanupMailbox := m.IMAP.Mailbox
+	if folderFound != "" {
+		cleanupMailbox = folderFound
+	}
+	runCleanup(ctx, logger, moduleName, m, g, fm, cleanupMailbox)
 
 	fm.success.Set(1)
 	success = true
@@ -142,14 +169,30 @@ func parseReceivedMail(fm *flowMetrics, raw []byte, r pdns.Resolver, g config.Gl
 	fm.spam.Observe(msg.Header)
 }
 
-func runCleanup(ctx context.Context, logger *slog.Logger, moduleName string, m config.Module, g config.Global, fm *flowMetrics) {
+// classifyFolder maps a raw IMAP folder name to one of the canonical
+// category strings: "inbox", "spam", "junk", or "other".
+func classifyFolder(name string) string {
+	lower := strings.ToLower(name)
+	switch {
+	case name == "INBOX":
+		return "inbox"
+	case strings.Contains(lower, "spam"):
+		return "spam"
+	case strings.Contains(lower, "junk"):
+		return "junk"
+	default:
+		return "other"
+	}
+}
+
+func runCleanup(ctx context.Context, logger *slog.Logger, moduleName string, m config.Module, g config.Global, fm *flowMetrics, mailbox string) {
 	if !g.Cleanup.Enabled {
 		return
 	}
 	n, err := imap.Sweep(ctx, imap.ClientInput{
 		Server: m.IMAP.Server, TLS: m.IMAP.TLS,
 		Username: m.IMAP.Auth.Username, Password: m.IMAP.Auth.Password,
-		Mailbox: m.IMAP.Mailbox, PollInterval: m.IMAP.PollInterval,
+		Mailbox: mailbox, PollInterval: m.IMAP.PollInterval,
 	}, g.Cleanup.MaxAge)
 	if err != nil {
 		logger.Warn("imap cleanup failed", "module", moduleName, "error", err.Error())

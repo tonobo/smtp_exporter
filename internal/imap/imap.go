@@ -72,6 +72,21 @@ type ClientInput struct {
 	TLSConfig    *tls.Config
 }
 
+// DiscoverFolders connects to the IMAP server described by in, logs in, and
+// returns the discovered folder layout. The connection is closed before return.
+func DiscoverFolders(ctx context.Context, in ClientInput) (Folders, error) {
+	c, err := connect(ctx, in)
+	if err != nil {
+		return Folders{Inbox: "INBOX"}, err
+	}
+	defer c.Logout()
+
+	if err := c.Login(in.Username, in.Password).Wait(); err != nil {
+		return Folders{Inbox: "INBOX"}, fmt.Errorf("login: %w", err)
+	}
+	return discoverFolders(c)
+}
+
 // WaitForSubject polls the given folders every PollInterval until a message
 // with the exact Subject header appears in one of them. It returns the raw
 // RFC-5322 bytes of the message, the name of the folder where it was found,

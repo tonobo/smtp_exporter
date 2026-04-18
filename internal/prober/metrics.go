@@ -27,6 +27,8 @@ type flowMetrics struct {
 	imapMessageReceived prometheus.Gauge
 	imapDelivery        prometheus.Gauge
 	imapCleanupDeleted  prometheus.Gauge
+	imapFolderInfo      *prometheus.GaugeVec
+	imapSpamDetected    prometheus.Gauge
 
 	// sender ip
 	senderIPFound prometheus.Gauge
@@ -64,6 +66,8 @@ func newFlowMetrics(reg prometheus.Registerer) *flowMetrics {
 		imapMessageReceived: prometheus.NewGauge(prometheus.GaugeOpts{Name: "probe_imap_message_received", Help: "1 if the probe mail was found on IMAP."}),
 		imapDelivery:        prometheus.NewGauge(prometheus.GaugeOpts{Name: "probe_imap_delivery_seconds", Help: "Seconds from SMTP send-done to IMAP detection."}),
 		imapCleanupDeleted:  prometheus.NewGauge(prometheus.GaugeOpts{Name: "probe_imap_cleanup_deleted_count", Help: "Number of mails deleted in cleanup (target + sweep)."}),
+		imapFolderInfo:      prometheus.NewGaugeVec(prometheus.GaugeOpts{Name: "probe_imap_folder_info", Help: "1 for the folder where the probe message was detected (inbox, spam, junk, other)."}, []string{"folder"}),
+		imapSpamDetected:    prometheus.NewGauge(prometheus.GaugeOpts{Name: "probe_imap_spam_detected", Help: "1 if the probe message was delivered but landed in a spam/junk folder."}),
 
 		senderIPFound: prometheus.NewGauge(prometheus.GaugeOpts{Name: "probe_sender_ip_found", Help: "1 if a public sender IP was extracted from the Received chain."}),
 		senderIPInfo:  prometheus.NewGaugeVec(prometheus.GaugeOpts{Name: "probe_sender_ip_info", Help: "1 for the extracted sender IP."}, []string{"ip"}),
@@ -80,6 +84,7 @@ func newFlowMetrics(reg prometheus.Registerer) *flowMetrics {
 		m.smtpSendSuccess, m.smtpStatus, m.smtpEnhancedStatus,
 		m.smtpTLS, m.smtpTLSVersion, m.smtpTLSCertExpire, m.smtpTLSFingerprint,
 		m.imapLoginSuccess, m.imapMessageReceived, m.imapDelivery, m.imapCleanupDeleted,
+		m.imapFolderInfo, m.imapSpamDetected,
 		m.senderIPFound, m.senderIPInfo,
 		m.dnsblChecked, m.dnsblListed, m.dnsblDuration,
 		m.spfRecordFound, m.spfRecordInfo,

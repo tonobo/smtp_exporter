@@ -159,6 +159,116 @@ func appendToMemUser(user *imapmemserver.User, mailbox string, raw []byte) error
 	return err
 }
 
+// spamBackend is like e2eBackend but delivers incoming SMTP mail into a Spam
+// folder instead of INBOX. Used to simulate a recipient whose server
+// classified the probe as spam.
+type spamBackend struct {
+	mu          sync.Mutex
+	imapUser    *imapmemserver.User
+	spamMailbox string
+}
+
+func (b *spamBackend) NewSession(_ *esmtp.Conn) (esmtp.Session, error) {
+	return &spamSession{b: b}, nil
+}
+
+type spamSession struct {
+	b *spamBackend
+}
+
+func (s *spamSession) AuthMechanisms() []string { return []string{sasl.Plain} }
+func (s *spamSession) Auth(mech string) (sasl.Server, error) {
+	return sasl.NewPlainServer(func(identity, username, password string) error { return nil }), nil
+}
+func (s *spamSession) Mail(from string, _ *esmtp.MailOptions) error { return nil }
+func (s *spamSession) Rcpt(to string, _ *esmtp.RcptOptions) error   { return nil }
+func (s *spamSession) Data(r io.Reader) error {
+	raw, err := io.ReadAll(r)
+	if err != nil {
+		return err
+	}
+	s.b.mu.Lock()
+	defer s.b.mu.Unlock()
+	return appendToMemUser(s.b.imapUser, s.b.spamMailbox, raw)
+}
+func (*spamSession) Reset()        {}
+func (*spamSession) Logout() error { return nil }
+
+// TestMailflow_SpamPlacementEmitsMetric verifies that when the probe mail
+// is delivered to a spam/junk folder, the prober emits
+// probe_imap_spam_detected=1 and probe_imap_folder_info{folder="spam"}=1.
+func TestMailflow_SpamPlacementEmitsMetric(t *testing.T) {
+	const spamFolder = "[Gmail]/Spam"
+
+	// IMAP mem server with INBOX + Spam folder (SPECIAL-USE \Junk).
+	memSrv := imapmemserver.New()
+	user := imapmemserver.NewUser("target@other", "pass")
+	if err := user.Create("INBOX", nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := user.Create(spamFolder, &imap.CreateOptions{SpecialUse: []imap.MailboxAttr{imap.MailboxAttrJunk}}); err != nil {
+		t.Fatal(err)
+	}
+	memSrv.AddUser(user)
+	imapSrv := imapserver.New(&imapserver.Options{
+		InsecureAuth: true,
+		NewSession: func(_ *imapserver.Conn) (imapserver.Session, *imapserver.GreetingData, error) {
+			return memSrv.NewSession(), &imapserver.GreetingData{PreAuth: false}, nil
+		}})
+	il, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	go func() { _ = imapSrv.Serve(il) }()
+	defer func() { _ = imapSrv.Close(); _ = il.Close() }()
+
+	// SMTP fake: delivers into [Gmail]/Spam instead of INBOX.
+	beh := &spamBackend{imapUser: user, spamMailbox: spamFolder}
+	smtpSrv := esmtp.NewServer(beh)
+	smtpSrv.Domain = "test"
+	smtpSrv.AllowInsecureAuth = true
+	sl, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	go func() { _ = smtpSrv.Serve(sl) }()
+	defer func() { _ = smtpSrv.Close(); _ = sl.Close() }()
+
+	mod := config.Module{
+		Prober:  "mailflow",
+		Timeout: 5 * time.Second,
+		SMTP: config.SMTP{
+			Server:   sl.Addr().String(),
+			TLS:      "no",
+			EHLO:     "test",
+			MailFrom: "probe@example.org",
+			MailTo:   "target@other",
+			Auth:     config.Auth{Username: "u", Password: "p"},
+		},
+		IMAP: config.IMAP{
+			Server:       il.Addr().String(),
+			TLS:          "no",
+			Mailbox:      "INBOX",
+			PollInterval: 200 * time.Millisecond,
+			Auth:         config.Auth{Username: "target@other", Password: "pass"},
+		},
+	}
+	glb := config.Global{
+		Cleanup: config.Cleanup{Enabled: false},
+	}
+
+	reg := prometheus.NewRegistry()
+	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	ok := Run(context.Background(), logger, mod, "spam_test", glb, pdns.NewFake(), reg)
+	if !ok {
+		dumpReg(t, reg)
+		t.Fatal("probe failed")
+	}
+
+	assertGauge(t, reg, "probe_imap_spam_detected", 1)
+	assertGaugeLabel(t, reg, "probe_imap_folder_info", map[string]string{"folder": "spam"}, 1)
+}
+
 func assertGauge(t *testing.T, reg *prometheus.Registry, name string, want float64) {
 	t.Helper()
 	mfs, _ := reg.Gather()
