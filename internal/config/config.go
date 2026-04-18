@@ -81,8 +81,9 @@ func Load(path string) (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read: %w", err)
 	}
+	expanded := os.ExpandEnv(string(raw))
 	var c Config
-	if err := yaml.Unmarshal(raw, &c); err != nil {
+	if err := yaml.Unmarshal([]byte(expanded), &c); err != nil {
 		return nil, fmt.Errorf("parse: %w", err)
 	}
 	if err := c.validate(); err != nil {

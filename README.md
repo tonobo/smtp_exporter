@@ -75,6 +75,22 @@ modules:
 
 Reload with `SIGHUP` or `POST /-/reload`.
 
+### Environment variable expansion
+
+`${VAR}` and `$VAR` placeholders in the config file are expanded at load time
+via `os.ExpandEnv`. Useful for keeping secrets out of the YAML:
+
+```yaml
+modules:
+  example:
+    smtp:
+      auth:
+        password: ${SMTP_PASSWORD}
+```
+
+Unset variables expand to empty strings — verify env vars are populated to
+avoid silent auth failures.
+
 ### Gmail setup
 
 Gmail free accounts work, but only with an **App Password**, not the regular account password:
