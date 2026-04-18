@@ -17,30 +17,33 @@ type HistoryEntry struct {
 
 // History is a bounded FIFO of probe outcomes.
 type History struct {
-	mu     sync.Mutex
-	nextID int64
-	max    int
-	items  []HistoryEntry
+	mu       sync.Mutex
+	nextID   int64
+	maxItems int
+	items    []HistoryEntry
 }
 
-func NewHistory(max int) *History {
-	if max <= 0 {
-		max = 100
+// NewHistory returns a bounded FIFO of the last maxItems probe outcomes.
+func NewHistory(maxItems int) *History {
+	if maxItems <= 0 {
+		maxItems = 100
 	}
-	return &History{max: max}
+	return &History{maxItems: maxItems}
 }
 
+// Add records a probe outcome.
 func (h *History) Add(moduleName, target, output string, success bool) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.nextID++
 	e := HistoryEntry{ID: h.nextID, Module: moduleName, Target: target, Success: success, Timestamp: time.Now(), Output: output}
 	h.items = append(h.items, e)
-	if len(h.items) > h.max {
-		h.items = h.items[len(h.items)-h.max:]
+	if len(h.items) > h.maxItems {
+		h.items = h.items[len(h.items)-h.maxItems:]
 	}
 }
 
+// List returns a snapshot of the current history, oldest first.
 func (h *History) List() []HistoryEntry {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -49,6 +52,7 @@ func (h *History) List() []HistoryEntry {
 	return out
 }
 
+// Get returns the entry with the given ID, or nil if not found.
 func (h *History) Get(id int64) *HistoryEntry {
 	h.mu.Lock()
 	defer h.mu.Unlock()

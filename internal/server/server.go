@@ -34,10 +34,18 @@ type Handler struct {
 }
 
 // NewHandler constructs a Handler and registers exporter-internal metrics.
-func NewHandler(logger *slog.Logger, sc *config.SafeConfig, r pdns.Resolver, reload func() error, internalReg prometheus.Registerer) *Handler {
+func NewHandler(
+	logger *slog.Logger, sc *config.SafeConfig, r pdns.Resolver, reload func() error, internalReg prometheus.Registerer,
+) *Handler {
 	h := &Handler{Logger: logger, Config: sc, Resolver: r, Reload: reload, History: NewHistory(100)}
-	h.unknownModule = prometheus.NewCounter(prometheus.CounterOpts{Name: "smtp_exporter_unknown_module_total", Help: "Count of probes requesting an unknown module."})
-	h.probeTotal = prometheus.NewCounterVec(prometheus.CounterOpts{Name: "smtp_exporter_probes_total", Help: "Count of probes by module and outcome."}, []string{"module", "outcome"})
+	h.unknownModule = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "smtp_exporter_unknown_module_total",
+		Help: "Count of probes requesting an unknown module.",
+	})
+	h.probeTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "smtp_exporter_probes_total",
+		Help: "Count of probes by module and outcome.",
+	}, []string{"module", "outcome"})
 	internalReg.MustRegister(h.unknownModule, h.probeTotal)
 	return h
 }

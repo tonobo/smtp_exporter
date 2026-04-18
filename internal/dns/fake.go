@@ -22,6 +22,7 @@ func NewFake() *Fake {
 	}
 }
 
+// LookupTXT returns the configured TXT records for the given name.
 func (f *Fake) LookupTXT(_ context.Context, name string) ([]string, error) {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
@@ -32,6 +33,7 @@ func (f *Fake) LookupTXT(_ context.Context, name string) ([]string, error) {
 	return append([]string(nil), v...), nil
 }
 
+// LookupHost returns the configured addresses for the given host.
 func (f *Fake) LookupHost(_ context.Context, host string) ([]string, error) {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
@@ -42,6 +44,7 @@ func (f *Fake) LookupHost(_ context.Context, host string) ([]string, error) {
 	return append([]string(nil), v...), nil
 }
 
+// LookupAddr returns the configured hostnames for the given address.
 func (f *Fake) LookupAddr(_ context.Context, addr string) ([]string, error) {
 	f.mu.RLock()
 	defer f.mu.RUnlock()

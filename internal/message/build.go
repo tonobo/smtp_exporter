@@ -15,7 +15,7 @@ type Input struct {
 	From       string
 	To         string
 	Hostname   string
-	ModuleName string   // used for Feedback-ID header
+	ModuleName string    // used for Feedback-ID header
 	Now        time.Time // optional; defaults to time.Now()
 }
 
@@ -100,7 +100,7 @@ func Build(in Input) Built {
 	// Priority headers — yield to user mail in MTA queues and clients.
 	w("MT-Priority", "-4 (NON-URGENT)") // RFC 6758 low-priority MTA hint
 	w("Importance", "Low")              // RFC 2156 client hint
-	w("X-Priority", "5")               // de-facto client priority (1=high, 5=low)
+	w("X-Priority", "5")                // de-facto client priority (1=high, 5=low)
 
 	w("MIME-Version", "1.0")
 	w("Content-Type", "text/plain; charset=utf-8")

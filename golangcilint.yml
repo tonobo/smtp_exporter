@@ -1,0 +1,59 @@
+version: "2"
+run:
+  allow-parallel-runners: true
+  allow-serial-runners: true
+linters:
+  default: none
+  enable:
+    - bodyclose
+    - dupl
+    - durationcheck
+    - errcheck
+    - errorlint
+    - exhaustive
+    - forbidigo
+    - goconst
+    - gosec
+    - govet
+    - ineffassign
+    - lll
+    - misspell
+    - nilerr
+    - noctx
+    - nolintlint
+    - prealloc
+    - predeclared
+    - revive
+    - sloglint
+    - staticcheck
+    - unconvert
+    - unparam
+    - unused
+    - wastedassign
+    - whitespace
+  settings:
+    lll:
+      line-length: 140
+    revive:
+      rules:
+        - name: var-naming
+          arguments:
+            - []
+            - []
+            - - skipPackageNameChecks: true
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters:
+          - goconst
+          - unparam
+          - gosec
+formatters:
+  enable:
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

@@ -34,12 +34,12 @@ func startMemServer(t *testing.T, username, password string) (addr string, appen
 	memSrv.AddUser(user)
 
 	srv := imapserver.New(&imapserver.Options{
-		NewSession: func(c *imapserver.Conn) (imapserver.Session, *imapserver.GreetingData, error) {
+		NewSession: func(_ *imapserver.Conn) (imapserver.Session, *imapserver.GreetingData, error) {
 			return memSrv.NewSession(), &imapserver.GreetingData{PreAuth: false}, nil
 		},
 		InsecureAuth: true,
 	})
-	l, err := net.Listen("tcp", "127.0.0.1:0")
+	l, err := net.Listen("tcp", "127.0.0.1:0") //nolint:noctx // test helper; context not meaningful for net.Listen
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,12 +80,12 @@ func memServerWithFolders(t *testing.T, mailboxes []string, specialUseJunk ...st
 	memSrv.AddUser(user)
 
 	srv := imapserver.New(&imapserver.Options{
-		NewSession: func(c *imapserver.Conn) (imapserver.Session, *imapserver.GreetingData, error) {
+		NewSession: func(_ *imapserver.Conn) (imapserver.Session, *imapserver.GreetingData, error) {
 			return memSrv.NewSession(), &imapserver.GreetingData{PreAuth: false}, nil
 		},
 		InsecureAuth: true,
 	})
-	l, err := net.Listen("tcp", "127.0.0.1:0")
+	l, err := net.Listen("tcp", "127.0.0.1:0") //nolint:noctx // test helper; context not meaningful for net.Listen
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -214,12 +214,12 @@ func TestWaitForSubject_FoundInSpam(t *testing.T) {
 	memSrv.AddUser(user)
 
 	srv := imapserver.New(&imapserver.Options{
-		NewSession: func(c *imapserver.Conn) (imapserver.Session, *imapserver.GreetingData, error) {
+		NewSession: func(_ *imapserver.Conn) (imapserver.Session, *imapserver.GreetingData, error) {
 			return memSrv.NewSession(), &imapserver.GreetingData{PreAuth: false}, nil
 		},
 		InsecureAuth: true,
 	})
-	l, err := net.Listen("tcp", "127.0.0.1:0")
+	l, err := net.Listen("tcp", "127.0.0.1:0") //nolint:noctx // test helper; context not meaningful for net.Listen
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -298,7 +298,9 @@ func (c *noopCountingConn) Read(b []byte) (int, error) {
 
 // startMemServerWithNoopCount is like startMemServer but also returns a counter
 // that tracks how many NOOP commands the client has sent to the server.
-func startMemServerWithNoopCount(t *testing.T, username, password string) (addr string, appendMsg func([]byte), noopsSent func() int64, stop func()) {
+func startMemServerWithNoopCount(t *testing.T, username, password string) (
+	addr string, appendMsg func([]byte), noopsSent func() int64, stop func(),
+) {
 	t.Helper()
 	memSrv := imapmemserver.New()
 	user := imapmemserver.NewUser(username, password)
@@ -308,13 +310,13 @@ func startMemServerWithNoopCount(t *testing.T, username, password string) (addr 
 	memSrv.AddUser(user)
 
 	srv := imapserver.New(&imapserver.Options{
-		NewSession: func(conn *imapserver.Conn) (imapserver.Session, *imapserver.GreetingData, error) {
+		NewSession: func(_ *imapserver.Conn) (imapserver.Session, *imapserver.GreetingData, error) {
 			return memSrv.NewSession(), &imapserver.GreetingData{PreAuth: false}, nil
 		},
 		InsecureAuth: true,
 	})
 
-	rawL, err := net.Listen("tcp", "127.0.0.1:0")
+	rawL, err := net.Listen("tcp", "127.0.0.1:0") //nolint:noctx // test helper; context not meaningful for net.Listen
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -423,12 +425,12 @@ func TestMoveToInbox_FromGmailSpam(t *testing.T) {
 	memSrv.AddUser(user)
 
 	srv := imapserver.New(&imapserver.Options{
-		NewSession: func(c *imapserver.Conn) (imapserver.Session, *imapserver.GreetingData, error) {
+		NewSession: func(_ *imapserver.Conn) (imapserver.Session, *imapserver.GreetingData, error) {
 			return memSrv.NewSession(), &imapserver.GreetingData{PreAuth: false}, nil
 		},
 		InsecureAuth: true,
 	})
-	l, err := net.Listen("tcp", "127.0.0.1:0")
+	l, err := net.Listen("tcp", "127.0.0.1:0") //nolint:noctx // test helper; context not meaningful for net.Listen
 	if err != nil {
 		t.Fatal(err)
 	}

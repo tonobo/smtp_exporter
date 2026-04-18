@@ -11,10 +11,10 @@ import (
 	"testing"
 	"time"
 
-	sasl "github.com/emersion/go-sasl"
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapserver"
 	"github.com/emersion/go-imap/v2/imapserver/imapmemserver"
+	sasl "github.com/emersion/go-sasl"
 	esmtp "github.com/emersion/go-smtp"
 	"github.com/prometheus/client_golang/prometheus"
 
@@ -48,8 +48,8 @@ type e2eSession struct {
 }
 
 func (s *e2eSession) AuthMechanisms() []string { return []string{sasl.Plain} }
-func (s *e2eSession) Auth(mech string) (sasl.Server, error) {
-	return sasl.NewPlainServer(func(identity, username, password string) error {
+func (s *e2eSession) Auth(_ string) (sasl.Server, error) {
+	return sasl.NewPlainServer(func(_, username, password string) error {
 		return nil
 	}), nil
 }
@@ -87,7 +87,7 @@ func TestMailflow_EndToEnd(t *testing.T) {
 		NewSession: func(_ *imapserver.Conn) (imapserver.Session, *imapserver.GreetingData, error) {
 			return memSrv.NewSession(), &imapserver.GreetingData{PreAuth: false}, nil
 		}})
-	il, err := net.Listen("tcp", "127.0.0.1:0")
+	il, err := net.Listen("tcp", "127.0.0.1:0") //nolint:noctx // test helper; context not meaningful for net.Listen
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,7 +99,7 @@ func TestMailflow_EndToEnd(t *testing.T) {
 	smtpSrv := esmtp.NewServer(beh)
 	smtpSrv.Domain = "test"
 	smtpSrv.AllowInsecureAuth = true
-	sl, err := net.Listen("tcp", "127.0.0.1:0")
+	sl, err := net.Listen("tcp", "127.0.0.1:0") //nolint:noctx // test helper; context not meaningful for net.Listen
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,7 +136,7 @@ func TestMailflow_EndToEnd(t *testing.T) {
 	}
 
 	reg := prometheus.NewRegistry()
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	ok := Run(context.Background(), logger, mod, "e2e", glb, r, reg)
 	if !ok {
 		dumpReg(t, reg)
@@ -177,11 +177,11 @@ type spamSession struct {
 }
 
 func (s *spamSession) AuthMechanisms() []string { return []string{sasl.Plain} }
-func (s *spamSession) Auth(mech string) (sasl.Server, error) {
-	return sasl.NewPlainServer(func(identity, username, password string) error { return nil }), nil
+func (s *spamSession) Auth(_ string) (sasl.Server, error) {
+	return sasl.NewPlainServer(func(_, username, password string) error { return nil }), nil
 }
-func (s *spamSession) Mail(from string, _ *esmtp.MailOptions) error { return nil }
-func (s *spamSession) Rcpt(to string, _ *esmtp.RcptOptions) error   { return nil }
+func (s *spamSession) Mail(_ string, _ *esmtp.MailOptions) error { return nil }
+func (s *spamSession) Rcpt(_ string, _ *esmtp.RcptOptions) error { return nil }
 func (s *spamSession) Data(r io.Reader) error {
 	raw, err := io.ReadAll(r)
 	if err != nil {
@@ -215,7 +215,7 @@ func TestMailflow_SpamPlacementEmitsMetric(t *testing.T) {
 		NewSession: func(_ *imapserver.Conn) (imapserver.Session, *imapserver.GreetingData, error) {
 			return memSrv.NewSession(), &imapserver.GreetingData{PreAuth: false}, nil
 		}})
-	il, err := net.Listen("tcp", "127.0.0.1:0")
+	il, err := net.Listen("tcp", "127.0.0.1:0") //nolint:noctx // test helper; context not meaningful for net.Listen
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -227,7 +227,7 @@ func TestMailflow_SpamPlacementEmitsMetric(t *testing.T) {
 	smtpSrv := esmtp.NewServer(beh)
 	smtpSrv.Domain = "test"
 	smtpSrv.AllowInsecureAuth = true
-	sl, err := net.Listen("tcp", "127.0.0.1:0")
+	sl, err := net.Listen("tcp", "127.0.0.1:0") //nolint:noctx // test helper; context not meaningful for net.Listen
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -258,7 +258,7 @@ func TestMailflow_SpamPlacementEmitsMetric(t *testing.T) {
 	}
 
 	reg := prometheus.NewRegistry()
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	ok := Run(context.Background(), logger, mod, "spam_test", glb, pdns.NewFake(), reg)
 	if !ok {
 		dumpReg(t, reg)
@@ -290,7 +290,7 @@ func TestMailflow_MovesProbeFromSpam(t *testing.T) {
 		NewSession: func(_ *imapserver.Conn) (imapserver.Session, *imapserver.GreetingData, error) {
 			return memSrv.NewSession(), &imapserver.GreetingData{PreAuth: false}, nil
 		}})
-	il, err := net.Listen("tcp", "127.0.0.1:0")
+	il, err := net.Listen("tcp", "127.0.0.1:0") //nolint:noctx // test helper; context not meaningful for net.Listen
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -302,7 +302,7 @@ func TestMailflow_MovesProbeFromSpam(t *testing.T) {
 	smtpSrv := esmtp.NewServer(beh)
 	smtpSrv.Domain = "test"
 	smtpSrv.AllowInsecureAuth = true
-	sl, err := net.Listen("tcp", "127.0.0.1:0")
+	sl, err := net.Listen("tcp", "127.0.0.1:0") //nolint:noctx // test helper; context not meaningful for net.Listen
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -333,7 +333,7 @@ func TestMailflow_MovesProbeFromSpam(t *testing.T) {
 	}
 
 	reg := prometheus.NewRegistry()
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	ok := Run(context.Background(), logger, mod, "spam_move_test", glb, pdns.NewFake(), reg)
 	if !ok {
 		dumpReg(t, reg)

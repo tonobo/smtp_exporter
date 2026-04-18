@@ -2,13 +2,15 @@
 package main
 
 import (
+	"errors"
 	"flag"
-	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/version"
@@ -27,12 +29,13 @@ func run() int {
 	configFile := flag.String("config.file", "smtp_exporter.yml", "Path to config file.")
 	configCheck := flag.Bool("config.check", false, "Validate config and exit.")
 	listenAddress := flag.String("web.listen-address", ":9125", "Address on which to expose metrics and web interface.")
-	webConfigFile := flag.String("web.config.file", "", "Path to configuration that can enable TLS or authentication. See exporter-toolkit docs.")
+	webConfigFile := flag.String("web.config.file", "",
+		"Path to configuration that can enable TLS or authentication. See exporter-toolkit docs.")
 	showVersion := flag.Bool("version", false, "Print version information and exit.")
 	flag.Parse()
 
 	if *showVersion {
-		fmt.Println(version.Print("smtp_exporter"))
+		_, _ = io.WriteString(os.Stdout, version.Print("smtp_exporter")+"\n")
 		return 0
 	}
 
@@ -67,7 +70,7 @@ func run() int {
 	mux := http.NewServeMux()
 	h.Register(mux)
 
-	srv := &http.Server{Handler: mux}
+	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 	addrs := []string{*listenAddress}
 	systemd := false
 	webCfg := &web.FlagConfig{
@@ -75,7 +78,7 @@ func run() int {
 		WebSystemdSocket:   &systemd,
 		WebConfigFile:      webConfigFile,
 	}
-	if err := web.ListenAndServe(srv, webCfg, logger); err != nil && err != http.ErrServerClosed {
+	if err := web.ListenAndServe(srv, webCfg, logger); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		logger.Error("http server failed", "err", err)
 		return 1
 	}

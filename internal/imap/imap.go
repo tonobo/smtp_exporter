@@ -15,6 +15,8 @@ import (
 	"github.com/emersion/go-imap/v2/imapclient"
 )
 
+const defaultInbox = "INBOX"
+
 // Folders holds the discovered mailbox names for a connected account.
 // Empty string means the folder was not found on this server.
 type Folders struct {
@@ -28,7 +30,7 @@ type Folders struct {
 // empty strings for folders not present on this server.
 func discoverFolders(c *imapclient.Client) (Folders, error) {
 	var f Folders
-	f.Inbox = "INBOX"
+	f.Inbox = defaultInbox
 
 	mailboxes, err := c.List("", "*", &imap.ListOptions{ReturnSpecialUse: true}).Collect()
 	if err != nil {
@@ -77,7 +79,7 @@ type ClientInput struct {
 func DiscoverFolders(ctx context.Context, in ClientInput) (Folders, error) {
 	c, err := connect(ctx, in)
 	if err != nil {
-		return Folders{Inbox: "INBOX"}, err
+		return Folders{Inbox: defaultInbox}, err
 	}
 	defer c.Logout()
 
@@ -207,8 +209,9 @@ func connect(ctx context.Context, in ClientInput) (*imapclient.Client, error) {
 	case "tls":
 		cfg := in.TLSConfig
 		if cfg == nil {
-			cfg = &tls.Config{ServerName: hostOnly(in.Server)}
+			cfg = &tls.Config{ServerName: hostOnly(in.Server), MinVersion: tls.VersionTLS12}
 		}
+		cfg = ensureTLSMin(cfg)
 		td := &tls.Dialer{NetDialer: d, Config: cfg}
 		conn, err := td.DialContext(ctx, "tcp", in.Server)
 		if err != nil {
@@ -222,8 +225,9 @@ func connect(ctx context.Context, in ClientInput) (*imapclient.Client, error) {
 		}
 		cfg := in.TLSConfig
 		if cfg == nil {
-			cfg = &tls.Config{ServerName: hostOnly(in.Server)}
+			cfg = &tls.Config{ServerName: hostOnly(in.Server), MinVersion: tls.VersionTLS12}
 		}
+		cfg = ensureTLSMin(cfg)
 		c, err := imapclient.NewStartTLS(conn, &imapclient.Options{TLSConfig: cfg})
 		if err != nil {
 			return nil, fmt.Errorf("starttls: %w", err)
@@ -275,6 +279,17 @@ func fetchFirst(c *imapclient.Client, uid imap.UID) ([]byte, error) {
 			}
 		}
 	}
+}
+
+func ensureTLSMin(cfg *tls.Config) *tls.Config {
+	if cfg == nil {
+		return nil
+	}
+	if cfg.MinVersion == 0 {
+		cfg = cfg.Clone()
+		cfg.MinVersion = tls.VersionTLS12
+	}
+	return cfg
 }
 
 func hostOnly(addr string) string {

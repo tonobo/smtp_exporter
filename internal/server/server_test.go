@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"io"
 	"log/slog"
 	"net/http"
@@ -15,7 +16,7 @@ import (
 )
 
 func discardLogger() *slog.Logger {
-	return slog.New(slog.NewJSONHandler(io.Discard, nil))
+	return slog.New(slog.DiscardHandler)
 }
 
 func TestProbe_UnknownModule(t *testing.T) {
@@ -27,7 +28,11 @@ func TestProbe_UnknownModule(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	resp, err := http.Get(srv.URL + "/probe?module=nope")
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, srv.URL+"/probe?module=nope", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,7 +51,11 @@ func TestHealth(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	resp, err := http.Get(srv.URL + "/-/health")
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, srv.URL+"/-/health", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}

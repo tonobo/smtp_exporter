@@ -78,7 +78,7 @@ type TLSConfig struct {
 
 // Load reads and validates a config file.
 func Load(path string) (*Config, error) {
-	raw, err := os.ReadFile(path)
+	raw, err := os.ReadFile(path) //nolint:gosec // G304: caller-supplied config path is intentional
 	if err != nil {
 		return nil, fmt.Errorf("read: %w", err)
 	}

@@ -24,7 +24,9 @@ import (
 
 // Run executes the mailflow probe for the given module and records all
 // observations on reg. Returns whether the probe succeeded overall.
-func Run(ctx context.Context, logger *slog.Logger, m config.Module, moduleName string, g config.Global, r pdns.Resolver, reg *prometheus.Registry) bool {
+func Run(
+	ctx context.Context, logger *slog.Logger, m config.Module, moduleName string, g config.Global, r pdns.Resolver, reg *prometheus.Registry,
+) bool {
 	fm := newFlowMetrics(reg)
 	start := time.Now()
 	success := false
@@ -216,7 +218,9 @@ func classifyFolder(name string) string {
 	}
 }
 
-func runCleanup(ctx context.Context, logger *slog.Logger, moduleName string, m config.Module, g config.Global, fm *flowMetrics, mailbox string) {
+func runCleanup(
+	ctx context.Context, logger *slog.Logger, moduleName string, m config.Module, g config.Global, fm *flowMetrics, mailbox string,
+) {
 	if !g.Cleanup.Enabled {
 		return
 	}

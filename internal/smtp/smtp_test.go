@@ -27,8 +27,8 @@ func (b *testBackend) NewSession(c *esmtp.Conn) (esmtp.Session, error) {
 type testSession struct{ b *testBackend }
 
 func (s *testSession) AuthMechanisms() []string { return []string{sasl.Plain} }
-func (s *testSession) Auth(mech string) (sasl.Server, error) {
-	return sasl.NewPlainServer(func(identity, username, password string) error {
+func (s *testSession) Auth(_ string) (sasl.Server, error) {
+	return sasl.NewPlainServer(func(_, username, password string) error {
 		return nil
 	}), nil
 }
@@ -63,7 +63,7 @@ func startTestServer(t *testing.T) (string, *testBackend, func()) {
 	srv.AllowInsecureAuth = true
 	srv.ReadTimeout = 10 * time.Second
 	srv.WriteTimeout = 10 * time.Second
-	l, err := net.Listen("tcp", "127.0.0.1:0")
+	l, err := net.Listen("tcp", "127.0.0.1:0") //nolint:noctx // test helper; context not meaningful for net.Listen
 	if err != nil {
 		t.Fatal(err)
 	}
