@@ -29,8 +29,9 @@ type DNSBL struct {
 
 // Cleanup controls probe-mail housekeeping.
 type Cleanup struct {
-	Enabled bool          `yaml:"enabled"`
-	MaxAge  time.Duration `yaml:"max_age"`
+	Enabled      bool          `yaml:"enabled"`
+	MaxAge       time.Duration `yaml:"max_age"`
+	MoveFromSpam bool          `yaml:"move_from_spam"` // if probe lands in spam, MOVE to INBOX to train classifier
 }
 
 // Module is one prober configuration.

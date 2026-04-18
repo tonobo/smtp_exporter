@@ -90,26 +90,27 @@ func DiscoverFolders(ctx context.Context, in ClientInput) (Folders, error) {
 // WaitForSubject polls the given folders every PollInterval until a message
 // with the exact Subject header appears in one of them. It returns the raw
 // RFC-5322 bytes of the message, the name of the folder where it was found,
-// and any error. Folders are checked in order; the first match wins.
+// the UID of the found message, and any error. Folders are checked in order;
+// the first match wins.
 //
 // A single-element slice []string{in.Mailbox} reproduces the original
 // single-folder behaviour.
-func WaitForSubject(ctx context.Context, in ClientInput, subject string, folders []string) ([]byte, string, error) {
+func WaitForSubject(ctx context.Context, in ClientInput, subject string, folders []string) ([]byte, string, imap.UID, error) {
 	c, err := connect(ctx, in)
 	if err != nil {
-		return nil, "", err
+		return nil, "", 0, err
 	}
 	defer c.Logout()
 
 	if err := c.Login(in.Username, in.Password).Wait(); err != nil {
-		return nil, "", fmt.Errorf("login: %w", err)
+		return nil, "", 0, fmt.Errorf("login: %w", err)
 	}
 
 	// Select the first folder up-front to satisfy servers that require an
 	// initial SELECT before issuing other commands.
 	if len(folders) > 0 {
 		if _, err := c.Select(folders[0], &imap.SelectOptions{ReadOnly: true}).Wait(); err != nil {
-			return nil, "", fmt.Errorf("select: %w", err)
+			return nil, "", 0, fmt.Errorf("select: %w", err)
 		}
 	}
 
@@ -123,7 +124,7 @@ func WaitForSubject(ctx context.Context, in ClientInput, subject string, folders
 			// (EXISTS, RECENT, etc.) so newly delivered messages become visible.
 			// Most real IMAP servers (Gmail, Dovecot, Stalwart) require this.
 			if err := c.Noop().Wait(); err != nil {
-				return nil, "", fmt.Errorf("noop: %w", err)
+				return nil, "", 0, fmt.Errorf("noop: %w", err)
 			}
 			uids, err := searchSubject(c, subject)
 			if err != nil {
@@ -131,16 +132,44 @@ func WaitForSubject(ctx context.Context, in ClientInput, subject string, folders
 			}
 			if len(uids) > 0 {
 				raw, fetchErr := fetchFirst(c, uids[0])
-				return raw, folder, fetchErr
+				return raw, folder, uids[0], fetchErr
 			}
 		}
 
 		select {
 		case <-ctx.Done():
-			return nil, "", fmt.Errorf("waitForSubject: %w", ctx.Err())
+			return nil, "", 0, fmt.Errorf("waitForSubject: %w", ctx.Err())
 		case <-time.After(in.PollInterval):
 		}
 	}
+}
+
+// MoveToInbox moves a message from sourceFolder to INBOX, preferring IMAP
+// MOVE (RFC 6851) and falling back to COPY + mark \Deleted + EXPUNGE.
+// The go-imap/v2 client handles the fallback internally based on server caps.
+// Returns (moved, error) — moved=true if the move completed successfully.
+func MoveToInbox(ctx context.Context, in ClientInput, sourceFolder string, uid imap.UID) (bool, error) {
+	c, err := connect(ctx, in)
+	if err != nil {
+		return false, err
+	}
+	defer c.Logout()
+
+	if err := c.Login(in.Username, in.Password).Wait(); err != nil {
+		return false, fmt.Errorf("login: %w", err)
+	}
+
+	// SELECT read-write (not ReadOnly) so MOVE / STORE \Deleted can proceed.
+	if _, err := c.Select(sourceFolder, nil).Wait(); err != nil {
+		return false, fmt.Errorf("select %q: %w", sourceFolder, err)
+	}
+
+	uidSet := imap.UIDSetNum(uid)
+	if _, err := c.Move(uidSet, "INBOX").Wait(); err != nil {
+		return false, fmt.Errorf("move uid %d from %q to INBOX: %w", uid, sourceFolder, err)
+	}
+
+	return true, nil
 }
 
 // Delete marks the given UIDs as \Deleted and expunges.

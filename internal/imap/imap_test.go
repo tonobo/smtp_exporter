@@ -169,7 +169,7 @@ func TestWaitForSubject_Found(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	raw, folder, err := WaitForSubject(ctx, in, "[smtp_exporter] abc-123", []string{"INBOX"})
+	raw, folder, uid, err := WaitForSubject(ctx, in, "[smtp_exporter] abc-123", []string{"INBOX"})
 	if err != nil {
 		t.Fatalf("wait: %v", err)
 	}
@@ -178,6 +178,9 @@ func TestWaitForSubject_Found(t *testing.T) {
 	}
 	if folder != "INBOX" {
 		t.Errorf("folder = %q, want INBOX", folder)
+	}
+	if uid == 0 {
+		t.Errorf("uid = 0, want non-zero")
 	}
 }
 
@@ -189,7 +192,7 @@ func TestWaitForSubject_Timeout(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 600*time.Millisecond)
 	defer cancel()
 
-	_, _, err := WaitForSubject(ctx, in, "not-there", []string{"INBOX"})
+	_, _, _, err := WaitForSubject(ctx, in, "not-there", []string{"INBOX"})
 	if err == nil {
 		t.Fatal("expected timeout error")
 	}
@@ -235,7 +238,7 @@ func TestWaitForSubject_FoundInSpam(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	_, folder, err := WaitForSubject(ctx, in, subj, []string{"INBOX", "[Gmail]/Spam"})
+	_, folder, _, err := WaitForSubject(ctx, in, subj, []string{"INBOX", "[Gmail]/Spam"})
 	if err != nil {
 		t.Fatalf("WaitForSubject: %v", err)
 	}
@@ -371,7 +374,7 @@ func TestWaitForSubject_PostSelectDelivery(t *testing.T) {
 	}
 	ch := make(chan result, 1)
 	go func() {
-		raw, _, err := WaitForSubject(ctx, in, awaitedSubject, []string{"INBOX"})
+		raw, _, _, err := WaitForSubject(ctx, in, awaitedSubject, []string{"INBOX"})
 		ch <- result{raw, err}
 	}()
 
@@ -402,6 +405,96 @@ func TestWaitForSubject_PostSelectDelivery(t *testing.T) {
 		t.Fatalf("no NOOP commands were sent; WaitForSubject must send NOOP before each UIDSearch to refresh the mailbox view on real servers")
 	}
 	t.Logf("NOOP commands sent: %d", noops)
+}
+
+// TestMoveToInbox_FromGmailSpam verifies that MoveToInbox moves a message from
+// a spam folder to INBOX and that the source folder no longer contains it.
+func TestMoveToInbox_FromGmailSpam(t *testing.T) {
+	const spamFolder = "[Gmail]/Spam"
+
+	memSrv := imapmemserver.New()
+	user := imapmemserver.NewUser("u", "p")
+	if err := user.Create("INBOX", nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := user.Create(spamFolder, &imap.CreateOptions{SpecialUse: []imap.MailboxAttr{imap.MailboxAttrJunk}}); err != nil {
+		t.Fatal(err)
+	}
+	memSrv.AddUser(user)
+
+	srv := imapserver.New(&imapserver.Options{
+		NewSession: func(c *imapserver.Conn) (imapserver.Session, *imapserver.GreetingData, error) {
+			return memSrv.NewSession(), &imapserver.GreetingData{PreAuth: false}, nil
+		},
+		InsecureAuth: true,
+	})
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	go func() { _ = srv.Serve(l) }()
+	defer func() { _ = srv.Close(); _ = l.Close() }()
+	addr := l.Addr().String()
+
+	// Append a probe message directly to the spam folder.
+	const subj = "[smtp_exporter] move-to-inbox-test"
+	raw := "Subject: " + subj + "\r\nX-Probe-ID: move-test\r\nFrom: a@b\r\nTo: c@d\r\n\r\nbody\r\n"
+	sr := &sizedReader{strings.NewReader(raw), int64(len(raw))}
+	if _, err := user.Append(spamFolder, sr, &imap.AppendOptions{Time: time.Now()}); err != nil {
+		t.Fatalf("append to spam: %v", err)
+	}
+
+	// Fetch the UID of the message we just appended via WaitForSubject.
+	in := ClientInput{Server: addr, TLS: "no", Username: "u", Password: "p", Mailbox: "INBOX", PollInterval: 100 * time.Millisecond}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	_, folder, uid, err := WaitForSubject(ctx, in, subj, []string{"INBOX", spamFolder})
+	if err != nil {
+		t.Fatalf("WaitForSubject: %v", err)
+	}
+	if folder != spamFolder {
+		t.Fatalf("expected message in %q, found in %q", spamFolder, folder)
+	}
+	if uid == 0 {
+		t.Fatal("got uid=0, expected non-zero")
+	}
+
+	// Move it to INBOX.
+	moved, err := MoveToInbox(ctx, in, spamFolder, uid)
+	if err != nil {
+		t.Fatalf("MoveToInbox: %v", err)
+	}
+	if !moved {
+		t.Fatal("MoveToInbox returned moved=false")
+	}
+
+	// Verify INBOX now has the message.
+	c := connectTest(t, addr)
+	defer func() { _ = c.Logout() }()
+
+	if _, err := c.Select("INBOX", &imap.SelectOptions{ReadOnly: true}).Wait(); err != nil {
+		t.Fatalf("select INBOX: %v", err)
+	}
+	inboxUIDs, err := searchSubject(c, subj)
+	if err != nil {
+		t.Fatalf("search INBOX: %v", err)
+	}
+	if len(inboxUIDs) == 0 {
+		t.Fatal("message not found in INBOX after MoveToInbox")
+	}
+
+	// Verify spam folder no longer has the message.
+	if _, err := c.Select(spamFolder, &imap.SelectOptions{ReadOnly: true}).Wait(); err != nil {
+		t.Fatalf("select spam: %v", err)
+	}
+	spamUIDs, err := searchSubject(c, subj)
+	if err != nil {
+		t.Fatalf("search spam: %v", err)
+	}
+	if len(spamUIDs) != 0 {
+		t.Fatalf("message still in spam after MoveToInbox (uids: %v)", spamUIDs)
+	}
 }
 
 // Ensure noopCountingConn satisfies io.ReadWriteCloser for the compiler.
