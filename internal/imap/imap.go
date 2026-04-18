@@ -42,6 +42,15 @@ func WaitForSubject(ctx context.Context, in ClientInput, subject string) ([]byte
 	}
 
 	for {
+		// NOOP causes the server to flush any pending untagged responses
+		// (EXISTS, RECENT, etc.) so the SELECTed mailbox view is refreshed
+		// before we search. Without this, most real IMAP servers (Gmail,
+		// Dovecot, Stalwart) only surface UIDs known at SELECT time — newly
+		// delivered messages are invisible until the next reconnect.
+		if err := c.Noop().Wait(); err != nil {
+			return nil, fmt.Errorf("noop: %w", err)
+		}
+
 		uids, err := searchSubject(c, subject)
 		if err != nil {
 			return nil, err

@@ -2,8 +2,10 @@ package imap
 
 import (
 	"context"
+	"io"
 	"net"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -81,3 +83,166 @@ func TestWaitForSubject_Timeout(t *testing.T) {
 		t.Fatal("expected timeout error")
 	}
 }
+
+// noopCountingListener wraps a net.Listener and counts NOOP commands seen
+// in client→server traffic on accepted connections. This lets us verify that
+// WaitForSubject actually sends NOOP before each search iteration, regardless
+// of whether the in-memory server needs it to refresh the UID set.
+//
+// Note: the imapmemserver used in tests refreshes the mailbox view eagerly
+// (every UIDSearch sees newly appended messages without NOOP). This means
+// the functional part of the test (message found within timeout) would pass
+// even without the NOOP fix. The NOOP-count assertion is what makes this test
+// fail before the fix and pass after — it directly verifies the production fix
+// that real IMAP servers (Gmail, Dovecot, Stalwart) require.
+type noopCountingListener struct {
+	net.Listener
+	noopCount *atomic.Int64
+}
+
+func (l *noopCountingListener) Accept() (net.Conn, error) {
+	conn, err := l.Listener.Accept()
+	if err != nil {
+		return nil, err
+	}
+	return &noopCountingConn{Conn: conn, noopCount: l.noopCount}, nil
+}
+
+type noopCountingConn struct {
+	net.Conn
+	noopCount *atomic.Int64
+}
+
+func (c *noopCountingConn) Write(b []byte) (int, error) {
+	return c.Conn.Write(b)
+}
+
+// Read intercepts client→server bytes to count NOOP commands.
+func (c *noopCountingConn) Read(b []byte) (int, error) {
+	n, err := c.Conn.Read(b)
+	if n > 0 {
+		s := string(b[:n])
+		// IMAP NOOP lines look like: "A3 NOOP\r\n"
+		for _, line := range strings.Split(s, "\n") {
+			upper := strings.ToUpper(strings.TrimSpace(line))
+			if strings.HasSuffix(upper, " NOOP") || upper == "NOOP" {
+				c.noopCount.Add(1)
+			}
+		}
+	}
+	return n, err
+}
+
+// startMemServerWithNoopCount is like startMemServer but also returns a counter
+// that tracks how many NOOP commands the client has sent to the server.
+func startMemServerWithNoopCount(t *testing.T, username, password string) (addr string, appendMsg func([]byte), noopsSent func() int64, stop func()) {
+	t.Helper()
+	memSrv := imapmemserver.New()
+	user := imapmemserver.NewUser(username, password)
+	if err := user.Create("INBOX", nil); err != nil {
+		t.Fatal(err)
+	}
+	memSrv.AddUser(user)
+
+	srv := imapserver.New(&imapserver.Options{
+		NewSession: func(conn *imapserver.Conn) (imapserver.Session, *imapserver.GreetingData, error) {
+			return memSrv.NewSession(), &imapserver.GreetingData{PreAuth: false}, nil
+		},
+		InsecureAuth: true,
+	})
+
+	rawL, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var count atomic.Int64
+	l := &noopCountingListener{Listener: rawL, noopCount: &count}
+	go func() { _ = srv.Serve(l) }()
+
+	appendFn := func(raw []byte) {
+		r := &sizedReader{strings.NewReader(string(raw)), int64(len(raw))}
+		_, _ = user.Append("INBOX", r, &imap.AppendOptions{Time: time.Now()})
+	}
+	return l.Addr().String(), appendFn, func() int64 { return count.Load() }, func() {
+		_ = srv.Close()
+		_ = rawL.Close()
+	}
+}
+
+// TestWaitForSubject_PostSelectDelivery verifies that WaitForSubject finds a
+// message that is delivered AFTER the initial SELECT.
+//
+// Most real IMAP servers (Gmail, Dovecot, Stalwart) only update the SELECTed
+// mailbox's UID set when the client sends an explicit interaction such as NOOP.
+// Without NOOP, repeated UIDSearch calls only see UIDs known at SELECT time,
+// so a probe mail delivered after SELECT is invisible for the entire poll window.
+//
+// The test has two assertions:
+//  1. WaitForSubject finds the message within the timeout (functional).
+//  2. At least one NOOP was sent per search poll (structural — proves the fix
+//     is in place even if the in-memory server refreshes eagerly on its own).
+func TestWaitForSubject_PostSelectDelivery(t *testing.T) {
+	addr, appendMsg, noopsSent, stop := startMemServerWithNoopCount(t, "u", "p")
+	defer stop()
+
+	// Pre-populate an unrelated message so SELECT returns a non-empty mailbox.
+	// This reproduces the production state where INBOX already has mail and
+	// a newly delivered probe message arrives after SELECT.
+	appendMsg([]byte("Subject: unrelated-pre-existing\r\nFrom: a@b\r\nTo: c@d\r\n\r\npre-existing body\r\n"))
+
+	const awaitedSubject = "[smtp_exporter] post-select-delivery-test"
+	const pollInterval = 150 * time.Millisecond
+
+	in := ClientInput{
+		Server:       addr,
+		TLS:          "no",
+		Username:     "u",
+		Password:     "p",
+		Mailbox:      "INBOX",
+		PollInterval: pollInterval,
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	type result struct {
+		raw []byte
+		err error
+	}
+	ch := make(chan result, 1)
+	go func() {
+		raw, err := WaitForSubject(ctx, in, awaitedSubject)
+		ch <- result{raw, err}
+	}()
+
+	// Wait two full poll cycles so WaitForSubject has definitely done at least
+	// one SELECT + search before the message is appended. This ensures the
+	// message truly arrives post-SELECT.
+	time.Sleep(2 * pollInterval)
+
+	appendMsg([]byte("Subject: " + awaitedSubject + "\r\nX-Probe-ID: post-select\r\nFrom: a@b\r\nTo: c@d\r\n\r\nbody\r\n"))
+
+	select {
+	case r := <-ch:
+		if r.err != nil {
+			t.Fatalf("WaitForSubject returned error: %v (message was appended post-SELECT — NOOP fix may be missing)", r.err)
+		}
+		if !strings.Contains(string(r.raw), awaitedSubject) {
+			t.Fatalf("returned message doesn't contain expected subject: %q", r.raw)
+		}
+	case <-ctx.Done():
+		t.Fatal("WaitForSubject timed out waiting for post-SELECT message — NOOP fix may be missing")
+	}
+
+	// Structural assertion: at least one NOOP must have been sent.
+	// Even if the in-memory server refreshes the UID set without NOOP (it does),
+	// production servers require it. The NOOP count verifies the fix is present.
+	noops := noopsSent()
+	if noops == 0 {
+		t.Fatalf("no NOOP commands were sent; WaitForSubject must send NOOP before each UIDSearch to refresh the mailbox view on real servers")
+	}
+	t.Logf("NOOP commands sent: %d", noops)
+}
+
+// Ensure noopCountingConn satisfies io.ReadWriteCloser for the compiler.
+var _ io.Reader = (*noopCountingConn)(nil)
