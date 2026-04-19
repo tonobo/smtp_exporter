@@ -1,4 +1,8 @@
 // Package promtest provides assertion helpers for prometheus.Registry contents.
+//
+// This package is internal test infrastructure. Its API is unstable
+// and not covered by the project's semver promises — it may change
+// or be removed at any time without notice.
 package promtest
 
 import (

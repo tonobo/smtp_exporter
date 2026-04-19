@@ -12,6 +12,7 @@ import (
 
 	"github.com/tonobo/smtp_exporter/internal/config"
 	pdns "github.com/tonobo/smtp_exporter/internal/dns"
+	"github.com/tonobo/smtp_exporter/internal/testutil/promtest"
 )
 
 // TestRun_SMTPFailureEarlyReturn verifies that when SMTP send fails, the probe
@@ -53,11 +54,11 @@ func TestRun_SMTPFailureEarlyReturn(t *testing.T) {
 	}
 
 	// probe_smtp_send_success must be 0
-	assertGauge(t, reg, "probe_smtp_send_success", 0)
+	promtest.AssertGauge(t, reg, "probe_smtp_send_success", nil, 0)
 
 	// probe_imap_message_received must be 0 (default) since IMAP phase never ran.
 	// It is registered but should have its zero default value (not set to 1).
-	assertGauge(t, reg, "probe_imap_message_received", 0)
+	promtest.AssertGauge(t, reg, "probe_imap_message_received", nil, 0)
 }
 
 // TestClassifyFolder covers all folder classification branches.

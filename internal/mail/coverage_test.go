@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/tonobo/smtp_exporter/internal/testutil/promtest"
 )
 
 // TestParseSpamHeaders_Malformed verifies that parsers handle empty/garbage values
@@ -66,7 +68,7 @@ func TestParseProofpoint(t *testing.T) {
 	reg := prometheus.NewRegistry()
 	m := NewSpamMetrics(reg)
 	m.ObserveSpam(h)
-	if got := gaugeValue(t, reg, "probe_spam_flag", "source", "proofpoint"); got != 1 {
+	if got := promtest.GaugeVal(t, reg, "probe_spam_flag", map[string]string{"source": "proofpoint"}); got != 1 {
 		t.Fatalf("proofpoint flag = %v, want 1", got)
 	}
 }
@@ -77,7 +79,7 @@ func TestParseMimecast(t *testing.T) {
 	reg := prometheus.NewRegistry()
 	m := NewSpamMetrics(reg)
 	m.ObserveSpam(h)
-	if got := gaugeValue(t, reg, "probe_spam_score", "source", "mimecast"); got != 3.5 {
+	if got := promtest.GaugeVal(t, reg, "probe_spam_score", map[string]string{"source": "mimecast"}); got != 3.5 {
 		t.Fatalf("mimecast score = %v, want 3.5", got)
 	}
 }
@@ -88,10 +90,10 @@ func TestParseSpamAssassin_StatusOnly(t *testing.T) {
 	reg := prometheus.NewRegistry()
 	m := NewSpamMetrics(reg)
 	m.ObserveSpam(h)
-	if got := gaugeValue(t, reg, "probe_spam_flag", "source", "spamassassin"); got != 1 {
+	if got := promtest.GaugeVal(t, reg, "probe_spam_flag", map[string]string{"source": "spamassassin"}); got != 1 {
 		t.Fatalf("flag = %v, want 1", got)
 	}
-	if got := gaugeValue(t, reg, "probe_spam_score", "source", "spamassassin"); got != 8.7 {
+	if got := promtest.GaugeVal(t, reg, "probe_spam_score", map[string]string{"source": "spamassassin"}); got != 8.7 {
 		t.Fatalf("score = %v, want 8.7", got)
 	}
 }
@@ -102,7 +104,7 @@ func TestParseSpamAssassin_Flag(t *testing.T) {
 	reg := prometheus.NewRegistry()
 	m := NewSpamMetrics(reg)
 	m.ObserveSpam(h)
-	if got := gaugeValue(t, reg, "probe_spam_flag", "source", "spamassassin"); got != 1 {
+	if got := promtest.GaugeVal(t, reg, "probe_spam_flag", map[string]string{"source": "spamassassin"}); got != 1 {
 		t.Fatalf("flag = %v, want 1", got)
 	}
 }
@@ -113,7 +115,7 @@ func TestParseSpamAssassin_NoFlag(t *testing.T) {
 	reg := prometheus.NewRegistry()
 	m := NewSpamMetrics(reg)
 	m.ObserveSpam(h)
-	if got := gaugeValue(t, reg, "probe_spam_flag", "source", "spamassassin"); got != 0 {
+	if got := promtest.GaugeVal(t, reg, "probe_spam_flag", map[string]string{"source": "spamassassin"}); got != 0 {
 		t.Fatalf("flag = %v, want 0", got)
 	}
 }

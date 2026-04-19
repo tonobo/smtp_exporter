@@ -2,6 +2,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"io"
@@ -93,6 +94,19 @@ func run() int {
 
 	// ReadHeaderTimeout: slowloris guard for management endpoints; well above any legitimate header arrival.
 	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
+
+	shutdownCtx, stopShutdown := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+	defer stopShutdown()
+	go func() {
+		<-shutdownCtx.Done()
+		logger.Info("shutdown signal received, draining HTTP server", "timeout_seconds", 10)
+		drainCtx, cancelDrain := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancelDrain()
+		if err := srv.Shutdown(drainCtx); err != nil {
+			logger.Warn("graceful shutdown failed", "err", err)
+		}
+	}()
+
 	addrs := []string{*listenAddress}
 	systemd := false
 	webCfg := &web.FlagConfig{

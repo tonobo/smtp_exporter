@@ -32,6 +32,9 @@ type DNSBLResult struct {
 func QueryBlacklist(ctx context.Context, r Resolver, ip net.IP, zones []string) []DNSBLResult {
 	out := make([]DNSBLResult, 0, len(zones))
 	rev := reverseIP(ip)
+	if rev == "" {
+		return nil // ip is neither IPv4 nor IPv6; nothing to query
+	}
 	for _, z := range zones {
 		start := time.Now()
 		name := rev + "." + z

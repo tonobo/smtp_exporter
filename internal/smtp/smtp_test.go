@@ -13,6 +13,7 @@ import (
 	"io"
 	"math/big"
 	"net"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -193,6 +194,24 @@ func TestSend_StartTLSWithCustomCA(t *testing.T) {
 	}
 	if !res.UsedTLS {
 		t.Fatal("expected UsedTLS=true for STARTTLS connection")
+	}
+}
+
+// TestRecordSMTPErr_TruncatesLongMessage verifies that recordSMTPErr clamps
+// Result.Message to maxMessageBytes and appends the truncation marker.
+func TestRecordSMTPErr_TruncatesLongMessage(t *testing.T) {
+	longMsg := strings.Repeat("a", 1000)
+	se := &esmtp.SMTPError{Code: 554, Message: longMsg}
+	var r Result
+	recordSMTPErr(&r, se)
+	if len(r.Message) > maxMessageBytes+len("…(truncated)") {
+		t.Fatalf("message not truncated: len=%d", len(r.Message))
+	}
+	if !strings.HasSuffix(r.Message, "…(truncated)") {
+		t.Fatalf("truncation marker missing: %q", r.Message)
+	}
+	if r.StatusCode != 554 {
+		t.Fatalf("status code: %d", r.StatusCode)
 	}
 }
 

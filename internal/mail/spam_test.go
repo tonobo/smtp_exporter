@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/tonobo/smtp_exporter/internal/testutil/promtest"
 )
 
 func FuzzSpamObserve(f *testing.F) {
@@ -57,10 +59,10 @@ func TestSpamAssassin(t *testing.T) {
 	reg := prometheus.NewRegistry()
 	m := NewSpamMetrics(reg)
 	m.ObserveSpam(h)
-	if got := gaugeValue(t, reg, "probe_spam_score", "source", "spamassassin"); got != 7.2 {
+	if got := promtest.GaugeVal(t, reg, "probe_spam_score", map[string]string{"source": "spamassassin"}); got != 7.2 {
 		t.Fatalf("score=%v", got)
 	}
-	if got := gaugeValue(t, reg, "probe_spam_flag", "source", "spamassassin"); got != 1 {
+	if got := promtest.GaugeVal(t, reg, "probe_spam_flag", map[string]string{"source": "spamassassin"}); got != 1 {
 		t.Fatalf("flag=%v", got)
 	}
 }
@@ -70,7 +72,7 @@ func TestRspamd(t *testing.T) {
 	reg := prometheus.NewRegistry()
 	m := NewSpamMetrics(reg)
 	m.ObserveSpam(h)
-	if got := gaugeValue(t, reg, "probe_spam_score", "source", "rspamd"); got != 3.5 {
+	if got := promtest.GaugeVal(t, reg, "probe_spam_score", map[string]string{"source": "rspamd"}); got != 3.5 {
 		t.Fatalf("score=%v", got)
 	}
 }
@@ -80,7 +82,7 @@ func TestGmail(t *testing.T) {
 	reg := prometheus.NewRegistry()
 	m := NewSpamMetrics(reg)
 	m.ObserveSpam(h)
-	if got := gaugeValue(t, reg, "probe_spam_flag", "source", "gmail"); got != 0 {
+	if got := promtest.GaugeVal(t, reg, "probe_spam_flag", map[string]string{"source": "gmail"}); got != 0 {
 		t.Fatalf("gm-spam=%v", got)
 	}
 }
@@ -90,7 +92,7 @@ func TestMicrosoft(t *testing.T) {
 	reg := prometheus.NewRegistry()
 	m := NewSpamMetrics(reg)
 	m.ObserveSpam(h)
-	if got := gaugeValue(t, reg, "probe_spam_score", "source", "microsoft"); got != 1 {
+	if got := promtest.GaugeVal(t, reg, "probe_spam_score", map[string]string{"source": "microsoft"}); got != 1 {
 		t.Fatalf("SCL=%v", got)
 	}
 }
@@ -100,7 +102,7 @@ func TestBarracuda(t *testing.T) {
 	reg := prometheus.NewRegistry()
 	m := NewSpamMetrics(reg)
 	m.ObserveSpam(h)
-	if got := gaugeValue(t, reg, "probe_spam_score", "source", "barracuda"); got != 2.30 {
+	if got := promtest.GaugeVal(t, reg, "probe_spam_score", map[string]string{"source": "barracuda"}); got != 2.30 {
 		t.Fatalf("score=%v", got)
 	}
 }
@@ -112,26 +114,7 @@ func TestStalwart(t *testing.T) {
 	reg := prometheus.NewRegistry()
 	m := NewSpamMetrics(reg)
 	m.ObserveSpam(h)
-	if got := gaugeValue(t, reg, "probe_spam_score", "source", "rspamd"); got != 3.5 {
+	if got := promtest.GaugeVal(t, reg, "probe_spam_score", map[string]string{"source": "rspamd"}); got != 3.5 {
 		t.Fatalf("score=%v, want 3.5", got)
 	}
-}
-
-func gaugeValue(t *testing.T, reg *prometheus.Registry, name, labelKey, labelVal string) float64 {
-	t.Helper()
-	mfs, _ := reg.Gather()
-	for _, mf := range mfs {
-		if mf.GetName() != name {
-			continue
-		}
-		for _, mt := range mf.GetMetric() {
-			for _, l := range mt.GetLabel() {
-				if l.GetName() == labelKey && l.GetValue() == labelVal {
-					return mt.GetGauge().GetValue()
-				}
-			}
-		}
-	}
-	t.Fatalf("metric %s{%s=%s} not found", name, labelKey, labelVal)
-	return 0
 }

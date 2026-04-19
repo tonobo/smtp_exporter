@@ -109,6 +109,19 @@ func TestQueryBlacklist_ListingRangeBoundaries(t *testing.T) {
 	}
 }
 
+// TestQueryBlacklist_InvalidIP verifies that an IP with an unexpected length
+// (neither 4-byte IPv4 nor 16-byte IPv6) returns nil without panicking or
+// making any DNS queries.
+func TestQueryBlacklist_InvalidIP(t *testing.T) {
+	r := NewFake()
+	// net.IP of length 1 is neither IPv4 (4) nor IPv6 (16).
+	badIP := net.IP{0x00}
+	res := QueryBlacklist(context.Background(), r, badIP, []string{"zen.spamhaus.org"})
+	if res != nil {
+		t.Fatalf("expected nil result for invalid IP, got %v", res)
+	}
+}
+
 func TestReverseIPv4(t *testing.T) {
 	got := reverseIP(net.ParseIP("1.2.3.4"))
 	if got != "4.3.2.1" {

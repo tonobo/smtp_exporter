@@ -1,0 +1,19 @@
+# Test artifacts
+coverage*.out
+coverage*.html
+*.test
+smtp_exporter
+
+# Editor
+.idea/
+.vscode/
+
+# CI metadata
+.github/
+.golangci.yml
+golangcilint.yml
+
+# Docs (not needed in image)
+README.md
+docs/
+testdata/

@@ -20,6 +20,7 @@ import (
 
 	"github.com/tonobo/smtp_exporter/internal/config"
 	pdns "github.com/tonobo/smtp_exporter/internal/dns"
+	"github.com/tonobo/smtp_exporter/internal/testutil/promtest"
 )
 
 // sizedReader is a minimal imap.LiteralReader implementation (matches imap_test.go pattern).
@@ -139,16 +140,16 @@ func TestMailflow_EndToEnd(t *testing.T) {
 	logger := slog.New(slog.DiscardHandler)
 	ok := Run(context.Background(), logger, mod, "e2e", glb, r, reg)
 	if !ok {
-		dumpReg(t, reg)
+		promtest.Dump(t, reg)
 		t.Fatal("probe failed")
 	}
 
-	assertGauge(t, reg, "probe_success", 1)
-	assertGauge(t, reg, "probe_smtp_send_success", 1)
-	assertGauge(t, reg, "probe_imap_message_received", 1)
-	assertGaugeLabel(t, reg, "probe_dnsbl_listed", map[string]string{"zone": "listed-test", "ip": "198.51.100.7"}, 1)
-	assertGaugeLabel(t, reg, "probe_spf_record_found", map[string]string{"domain": "example.org"}, 1)
-	assertGaugeLabel(t, reg, "probe_auth_result_info", map[string]string{"check": "spf", "result": "pass"}, 1)
+	promtest.AssertGauge(t, reg, "probe_success", nil, 1)
+	promtest.AssertGauge(t, reg, "probe_smtp_send_success", nil, 1)
+	promtest.AssertGauge(t, reg, "probe_imap_message_received", nil, 1)
+	promtest.AssertGauge(t, reg, "probe_dnsbl_listed", map[string]string{"zone": "listed-test", "ip": "198.51.100.7"}, 1)
+	promtest.AssertGauge(t, reg, "probe_spf_record_found", map[string]string{"domain": "example.org"}, 1)
+	promtest.AssertGauge(t, reg, "probe_auth_result_info", map[string]string{"check": "spf", "result": "pass"}, 1)
 }
 
 // appendToMemUser appends a raw message to the named mailbox of the given
@@ -261,12 +262,12 @@ func TestMailflow_SpamPlacementEmitsMetric(t *testing.T) {
 	logger := slog.New(slog.DiscardHandler)
 	ok := Run(context.Background(), logger, mod, "spam_test", glb, pdns.NewFake(), reg)
 	if !ok {
-		dumpReg(t, reg)
+		promtest.Dump(t, reg)
 		t.Fatal("probe failed")
 	}
 
-	assertGauge(t, reg, "probe_imap_spam_detected", 1)
-	assertGaugeLabel(t, reg, "probe_imap_folder_info", map[string]string{"folder": "spam"}, 1)
+	promtest.AssertGauge(t, reg, "probe_imap_spam_detected", nil, 1)
+	promtest.AssertGauge(t, reg, "probe_imap_folder_info", map[string]string{"folder": "spam"}, 1)
 }
 
 // TestMailflow_MovesProbeFromSpam verifies that when move_from_spam is true and
@@ -336,84 +337,10 @@ func TestMailflow_MovesProbeFromSpam(t *testing.T) {
 	logger := slog.New(slog.DiscardHandler)
 	ok := Run(context.Background(), logger, mod, "spam_move_test", glb, pdns.NewFake(), reg)
 	if !ok {
-		dumpReg(t, reg)
+		promtest.Dump(t, reg)
 		t.Fatal("probe failed")
 	}
 
-	assertCounter(t, reg, "probe_imap_spam_trained_total", 1)
-	assertGauge(t, reg, "probe_imap_spam_detected", 1)
-}
-
-func assertCounter(t *testing.T, reg *prometheus.Registry, name string, want float64) {
-	t.Helper()
-	mfs, _ := reg.Gather()
-	for _, mf := range mfs {
-		if mf.GetName() != name {
-			continue
-		}
-		for _, mt := range mf.GetMetric() {
-			if got := mt.GetCounter().GetValue(); got == want {
-				return
-			}
-		}
-	}
-	t.Fatalf("counter %s != %v", name, want)
-}
-
-func assertGauge(t *testing.T, reg *prometheus.Registry, name string, want float64) {
-	t.Helper()
-	mfs, _ := reg.Gather()
-	for _, mf := range mfs {
-		if mf.GetName() != name {
-			continue
-		}
-		for _, mt := range mf.GetMetric() {
-			if got := mt.GetGauge().GetValue(); got == want {
-				return
-			}
-		}
-	}
-	t.Fatalf("metric %s != %v", name, want)
-}
-
-func assertGaugeLabel(t *testing.T, reg *prometheus.Registry, name string, labels map[string]string, want float64) {
-	t.Helper()
-	mfs, _ := reg.Gather()
-	for _, mf := range mfs {
-		if mf.GetName() != name {
-			continue
-		}
-	next:
-		for _, mt := range mf.GetMetric() {
-			for k, v := range labels {
-				found := false
-				for _, lp := range mt.GetLabel() {
-					if lp.GetName() == k && lp.GetValue() == v {
-						found = true
-						break
-					}
-				}
-				if !found {
-					continue next
-				}
-			}
-			if mt.GetGauge().GetValue() == want {
-				return
-			}
-		}
-	}
-	t.Fatalf("metric %s with %v != %v", name, labels, want)
-}
-
-func dumpReg(t *testing.T, reg *prometheus.Registry) {
-	t.Helper()
-	mfs, _ := reg.Gather()
-	var b strings.Builder
-	for _, mf := range mfs {
-		fmt.Fprintf(&b, "%s:\n", mf.GetName())
-		for _, mt := range mf.GetMetric() {
-			fmt.Fprintf(&b, "  %v = %v\n", mt.GetLabel(), mt.GetGauge().GetValue())
-		}
-	}
-	t.Logf("registry:\n%s", b.String())
+	promtest.AssertGauge(t, reg, "probe_imap_spam_trained_total", nil, 1)
+	promtest.AssertGauge(t, reg, "probe_imap_spam_detected", nil, 1)
 }

@@ -75,6 +75,19 @@ modules:
 
 Reload with `SIGHUP` or `POST /-/reload`.
 
+### About module timeout
+
+The module `timeout` is enforced **between** IMAP polls (via `ctx.Done()` in
+the poll loop) and on SMTP dial (via `DialContext`). Individual blocking
+commands inside the IMAP library (`SELECT`, `NOOP`, `UIDSEARCH`, `FETCH`) do
+not honor the context — if the IMAP server hangs mid-command, the probe will
+block on the underlying TCP read until kernel-level TCP keepalive eventually
+fires (often minutes). In practice this never happens with healthy mail
+servers; with broken or unresponsive servers the probe may exceed the
+configured `timeout` by a noticeable margin. Set Prometheus `scrape_timeout`
+generously (`> module timeout + 30s`) to avoid scrape failures from this
+edge case.
+
 ### Environment variable expansion
 
 `${VAR}` and `$VAR` placeholders in the config file are expanded at load time
@@ -143,6 +156,16 @@ All probe-specific metrics are prefixed `probe_`. `*_found` gauges are `0|1` so 
 | `probe_spam_score_found` | gauge | `source` | 1 if the source reported a score. |
 | `probe_spam_score` | gauge | `source` | Spam score. |
 | `probe_spam_flag` | gauge | `source` | Boolean verdict where available. |
+
+### Exporter-internal metrics
+
+These metrics describe the exporter itself rather than a probe outcome. They
+are exposed on `/metrics` (not `/probe`).
+
+| Metric | Type | Labels | Meaning |
+|---|---|---|---|
+| `smtp_exporter_unknown_module_total` | counter | — | Probes requesting a module name not present in the config. Useful for catching configuration drift between the exporter and Prometheus scrape config. |
+| `smtp_exporter_probes_total` | counter | `module`, `outcome` | Total probes per module by outcome (`success` / `failure`). Use with `rate()` over time to compute per-module success rates without re-scraping `/probe`. |
 
 ### Example Prometheus scrape config
 

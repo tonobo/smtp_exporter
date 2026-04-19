@@ -1,4 +1,8 @@
 // Package imapfake spins up an in-memory IMAP server for tests.
+//
+// This package is internal test infrastructure. Its API is unstable
+// and not covered by the project's semver promises — it may change
+// or be removed at any time without notice.
 package imapfake
 
 import (
