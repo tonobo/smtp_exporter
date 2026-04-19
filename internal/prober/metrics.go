@@ -41,9 +41,10 @@ type flowMetrics struct {
 	senderIPInfo  *prometheus.GaugeVec
 
 	// dnsbl
-	dnsblChecked  *prometheus.GaugeVec
-	dnsblListed   *prometheus.GaugeVec
-	dnsblDuration *prometheus.GaugeVec
+	dnsblChecked    *prometheus.GaugeVec
+	dnsblListed     *prometheus.GaugeVec
+	dnsblDuration   *prometheus.GaugeVec
+	dnsblResultCode *prometheus.GaugeVec
 
 	// spf record
 	spfRecordFound *prometheus.GaugeVec
@@ -101,6 +102,11 @@ func newFlowMetrics(reg prometheus.Registerer) *flowMetrics {
 		dnsblChecked:  gv("probe_dnsbl_checked", "1 if the zone was queried.", []string{"zone"}),
 		dnsblListed:   gv("probe_dnsbl_listed", "1 if the IP is listed in the zone.", []string{"zone", "ip"}),
 		dnsblDuration: gv("probe_dnsbl_lookup_duration_seconds", "DNSBL lookup duration per zone.", []string{"zone"}),
+		dnsblResultCode: gv(
+			"probe_dnsbl_result_code",
+			"1 for the raw A-record response code returned by a DNSBL zone. Useful for diagnosing rate-limit codes like 127.255.255.254 that are not listings.",
+			[]string{"zone", "ip", "code"},
+		),
 
 		spfRecordFound: gv("probe_spf_record_found", "1 if an SPF TXT record was found.", []string{"domain"}),
 		spfRecordInfo:  gv("probe_spf_record_info", "1 per observed (domain,record) pair.", []string{"domain", "record"}),
@@ -113,7 +119,7 @@ func newFlowMetrics(reg prometheus.Registerer) *flowMetrics {
 		m.imapFolderInfo, m.imapSpamDetected,
 		m.imapSpamTrained, m.imapSpamTrainFailed,
 		m.senderIPFound, m.senderIPInfo,
-		m.dnsblChecked, m.dnsblListed, m.dnsblDuration,
+		m.dnsblChecked, m.dnsblListed, m.dnsblDuration, m.dnsblResultCode,
 		m.spfRecordFound, m.spfRecordInfo,
 	)
 	m.authres = authres.NewMetrics(reg)

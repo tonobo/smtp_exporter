@@ -99,8 +99,21 @@ func Run(
 	}
 
 	// IMAP receive — poll INBOX first, then spam folder if discovered.
+	// Search by the FIRST hex chunk of the ProbeID (8 chars), not the full
+	// dash-separated UUID. Reason: Stalwart's IMAP SEARCH SUBJECT goes
+	// through Postgres FTS, which (a) splits UUIDs on dashes into 5 separate
+	// tokens, and (b) takes 3+ minutes to index newly-arrived mail. Until
+	// FTS indexes, only single-token substring matches work — a search for
+	// the full "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" returns 0 hits while
+	// "xxxxxxxx" returns the message instantly. The 8-char hex chunk has
+	// 32-bit uniqueness, more than enough for our probe rate (collisions
+	// effectively impossible at <200 mails/day with immediate cleanup).
 	imapStart := time.Now()
-	raw, folderFound, foundUID, err := imap.WaitForSubject(ctx, imapIn, built.Subject, pollFolders)
+	needle := built.ProbeID
+	if dash := strings.IndexByte(needle, '-'); dash > 0 {
+		needle = needle[:dash]
+	}
+	raw, folderFound, foundUID, err := imap.WaitForSubject(ctx, imapIn, needle, pollFolders)
 	fm.phaseDuration.WithLabelValues("imap").Set(time.Since(imapStart).Seconds())
 	if err != nil {
 		logger.Warn("imap wait failed", "module", moduleName, "error", err.Error())
@@ -190,6 +203,9 @@ func parseReceivedMail(fm *flowMetrics, raw []byte, r pdns.Resolver, g config.Gl
 			fm.dnsblChecked.WithLabelValues(res.Zone).Set(1)
 			fm.dnsblDuration.WithLabelValues(res.Zone).Set(res.Duration.Seconds())
 			fm.dnsblListed.WithLabelValues(res.Zone, ip.String()).Set(boolToFloat(res.Listed))
+			if res.ResponseCode != "" {
+				fm.dnsblResultCode.WithLabelValues(res.Zone, ip.String(), res.ResponseCode).Set(1)
+			}
 		}
 	} else {
 		fm.senderIPFound.Set(0)
