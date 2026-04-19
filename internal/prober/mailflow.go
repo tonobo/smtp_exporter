@@ -237,6 +237,14 @@ func parseReceivedMail(ctx context.Context, fm *flowMetrics, raw []byte, r pdns.
 		fm.senderIPFound.Set(0)
 	}
 
+	// Receiving MX from Received chain
+	if host, ok := pmail.LastReceivingHost(received); ok {
+		fm.receivedMXFound.Set(1)
+		fm.receivedMXInfo.WithLabelValues(host).Set(1)
+	} else {
+		fm.receivedMXFound.Set(0)
+	}
+
 	// Authentication-Results
 	fm.authres.Observe(msg.Header.Get("Authentication-Results"))
 

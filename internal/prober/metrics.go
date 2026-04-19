@@ -49,6 +49,10 @@ type flowMetrics struct {
 	spfRecordFound *prometheus.GaugeVec
 	spfRecordInfo  *prometheus.GaugeVec
 
+	// receiving MX
+	receivedMXFound prometheus.Gauge
+	receivedMXInfo  *prometheus.GaugeVec
+
 	// sub-metrics
 	authres *mail.AuthResMetrics
 	spam    *mail.SpamMetrics
@@ -110,6 +114,12 @@ func newFlowMetrics(reg prometheus.Registerer) *flowMetrics {
 
 		spfRecordFound: gv("probe_spf_record_found", "1 if an SPF TXT record was found.", []string{"domain"}),
 		spfRecordInfo:  gv("probe_spf_record_info", "1 per observed (domain,record) pair.", []string{"domain", "record"}),
+
+		receivedMXFound: g("probe_received_mx_found",
+			"1 if the receiving MX hostname was extracted from the Received chain."),
+		receivedMXInfo: gv("probe_received_mx_info",
+			"1 for the receiving MX hostname. Useful to monitor load distribution across multiple equal-priority MX records.",
+			[]string{"host"}),
 	}
 	reg.MustRegister(
 		m.success, m.duration, m.phaseDuration,
@@ -121,6 +131,7 @@ func newFlowMetrics(reg prometheus.Registerer) *flowMetrics {
 		m.senderIPFound, m.senderIPInfo,
 		m.dnsblChecked, m.dnsblListed, m.dnsblDuration, m.dnsblResultCode,
 		m.spfRecordFound, m.spfRecordInfo,
+		m.receivedMXFound, m.receivedMXInfo,
 	)
 	m.authres = mail.NewAuthResMetrics(reg)
 	m.spam = mail.NewSpamMetrics(reg)
