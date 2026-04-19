@@ -9,6 +9,36 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
+func FuzzSpamObserve(f *testing.F) {
+	// Real-world examples from fixtures.
+	f.Add("Yes, score=7.2 required=5.0 tests=BAYES_99")
+	f.Add("3.5 / 15.0")
+	f.Add("default: false [3.50 / 15.00]")
+	f.Add("0")
+	f.Add("")
+
+	headerNames := []string{
+		"X-Spam-Status", "X-Spam-Score", "X-Spam-Flag", "X-Spam-Level",
+		"X-Rspamd-Score", "X-Rspamd-Result", "X-Spamd-Result",
+		"X-Gm-Spam", "X-Gm-Phishy",
+		"X-MS-Exchange-Organization-SCL",
+		"X-Barracuda-Spam-Score", "X-Barracuda-Spam-Status",
+		"X-Proofpoint-Spam-Details",
+		"X-Mimecast-Spam-Score",
+	}
+
+	f.Fuzz(func(t *testing.T, val string) {
+		// Try the fuzzed value against every known spam header name.
+		// Property: no parser panics, no matter how garbage the value.
+		for _, name := range headerNames {
+			h := mail.Header{name: []string{val}}
+			reg := prometheus.NewRegistry()
+			m := NewSpamMetrics(reg)
+			m.ObserveSpam(h) // must not panic
+		}
+	})
+}
+
 func loadSpamHeader(t *testing.T, path string) mail.Header {
 	t.Helper()
 	raw, err := os.ReadFile(path)

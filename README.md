@@ -236,6 +236,24 @@ make test-cover   # writes coverage.html
 
 No live-server tests are run in CI; unit tests use in-process emersion SMTP/IMAP servers and a fake DNS resolver.
 
+## Fuzz tests
+
+Three fuzz targets cover the parsers that handle attacker-influenced input
+(received mail headers and spam-scanner header values):
+
+- `FuzzFirstPublicSenderIP` — `internal/mail/received_test.go`
+- `FuzzLastReceivingHost` — `internal/mail/received_test.go`
+- `FuzzSpamObserve` — `internal/mail/spam_test.go`
+
+Run an ad-hoc fuzz session for new bug-hunting:
+
+```bash
+go test -fuzz=FuzzFirstPublicSenderIP -fuzztime=5m ./internal/mail/
+```
+
+Crashes are saved under `internal/mail/testdata/fuzz/<FuzzName>/` and become
+permanent regression tests on subsequent `go test` runs.
+
 ## License
 
 Apache-2.0.

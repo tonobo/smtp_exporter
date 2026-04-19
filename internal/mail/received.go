@@ -56,8 +56,12 @@ func LastReceivingHost(received []string) (string, bool) {
 		return "", false
 	}
 	// Try bracketed forms first: "by [192.0.2.1]" or "by [IPv6:2001:db8::1]".
+	// Require the extracted value to parse as a valid IP; bare integers like
+	// "[0]" are not valid and must not be returned as hostnames.
 	if m := byBracketRE.FindStringSubmatch(received[0]); m != nil {
-		return m[1], true
+		if net.ParseIP(m[1]) != nil {
+			return m[1], true
+		}
 	}
 	// Fall back to bare FQDN / short name. Reject all-digit results, which
 	// arise from Gmail's "by 2002:a05:6022:..." form where the IPv6 prefix

@@ -2,8 +2,10 @@ package mail
 
 import (
 	"bytes"
+	"net"
 	"net/mail"
 	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -83,6 +85,71 @@ func TestLastReceivingHost_DovecotShortName(t *testing.T) {
 	if !ok || h != "dovecot06" {
 		t.Fatalf("got %q ok=%v", h, ok)
 	}
+}
+
+func FuzzFirstPublicSenderIP(f *testing.F) {
+	// Seed corpus from existing fixtures + edge cases.
+	fixtures, _ := filepath.Glob("../../testdata/received_chains/*.eml")
+	for _, path := range fixtures {
+		if raw, err := os.ReadFile(path); err == nil {
+			f.Add(raw)
+		}
+	}
+	f.Add([]byte("Received: from x by y\nFrom: a@b\n\nbody"))
+	f.Add([]byte(""))
+	f.Add([]byte("\r\n\r\n"))
+
+	f.Fuzz(func(t *testing.T, raw []byte) {
+		msg, err := mail.ReadMessage(bytes.NewReader(raw))
+		if err != nil {
+			return // unparseable mail isn't our concern
+		}
+		ip, ok := FirstPublicSenderIP(msg.Header["Received"])
+		if !ok {
+			return
+		}
+		if ip == nil {
+			t.Fatalf("ok=true but ip is nil")
+		}
+		if reparsed := net.ParseIP(ip.String()); reparsed == nil {
+			t.Fatalf("returned IP %q does not round-trip parse", ip.String())
+		}
+		if isPrivateOrLocal(ip) {
+			t.Fatalf("returned private/local IP %v — function contract is public IPs only", ip)
+		}
+	})
+}
+
+func FuzzLastReceivingHost(f *testing.F) {
+	f.Add("from x by mx.example.com (Postfix); date")
+	f.Add("by 2002:a05:6022:1106:b0:23:1234:5678 with SMTP id abc123; date")
+	f.Add("from x by [192.0.2.1] with ESMTPS")
+	f.Add("from x by [IPv6:2001:db8::1]")
+	f.Add("")
+
+	f.Fuzz(func(t *testing.T, header string) {
+		host, ok := LastReceivingHost([]string{header})
+		if !ok {
+			return
+		}
+		if containsWhitespaceOrControl(host) {
+			t.Fatalf("hostname has whitespace/control char: %q", host)
+		}
+		if isAllDigits(host) {
+			t.Fatalf("hostname is all-digits %q (regression of Gmail IPv6-truncation fix)", host)
+		}
+	})
+}
+
+// containsWhitespaceOrControl reports whether s contains any whitespace or
+// control characters that would corrupt Prometheus labels.
+func containsWhitespaceOrControl(s string) bool {
+	for _, c := range s {
+		if c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == '\x00' || c == '\v' || c == '\f' {
+			return true
+		}
+	}
+	return false
 }
 
 func parseReceivedHeaders(t *testing.T, raw []byte) []string {
