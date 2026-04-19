@@ -91,6 +91,8 @@ modules:
 Unset variables expand to empty strings — verify env vars are populated to
 avoid silent auth failures.
 
+**Literal `$` characters must be escaped as `$$`.** `os.ExpandEnv` interprets every `$VAR` and `${VAR}` sequence — passwords containing a literal `$` will be silently truncated or substituted. Example: a password `foo$bar` becomes `foo` (the `$bar` is treated as the unset env var `$bar` → empty).
+
 ### Gmail setup
 
 Gmail free accounts work, but only with an **App Password**, not the regular account password:
@@ -111,7 +113,7 @@ All probe-specific metrics are prefixed `probe_`. `*_found` gauges are `0|1` so 
 |---|---|---|---|
 | `probe_success` | gauge | — | 1 iff SMTP send and IMAP receive both succeeded. |
 | `probe_duration_seconds` | gauge | — | Total probe wall-clock. |
-| `probe_phase_duration_seconds` | gauge | `phase` | Duration per phase (`smtp`, `imap`, `spf`, `dnsbl`, `parse`). |
+| `probe_phase_duration_seconds` | gauge | `phase` | Duration per phase (`smtp`, `imap`, `spf`, `dnsbl`, `parse`, `cleanup`). |
 | `probe_smtp_send_success` | gauge | — | 1 if SMTP send succeeded. |
 | `probe_smtp_status_code` | gauge | — | SMTP reply code; -1 on pre-reply failure. |
 | `probe_smtp_enhanced_status_code` | gauge | — | Enhanced status as flat int; -1 if absent. |
@@ -127,6 +129,8 @@ All probe-specific metrics are prefixed `probe_`. `*_found` gauges are `0|1` so 
 | `probe_imap_spam_detected` | gauge | — | 1 if probe was delivered to a spam/junk folder. Useful as alert signal. |
 | `probe_imap_spam_trained_total` | counter | — | 1 if a spam-to-inbox MOVE was issued for this probe (move_from_spam). Resets per scrape. |
 | `probe_imap_spam_train_failed_total` | counter | — | 1 if the spam-to-inbox MOVE failed for this probe. |
+| `probe_received_mx_found` | gauge | — | 1 if the receiving MX hostname was extracted from the topmost Received header. |
+| `probe_received_mx_info` | gauge | `host` | 1 for the receiving MX hostname. Useful when a domain has multiple MX records of equal priority — observe load distribution and detect a dead MX (sender retries to the working one → 100% via that one). |
 | `probe_sender_ip_found` | gauge | — | 1 if a public sender IP was extracted. |
 | `probe_sender_ip_info` | gauge | `ip` | 1 for the extracted sender IP. |
 | `probe_dnsbl_checked` | gauge | `zone` | 1 if the zone was queried. |
