@@ -7,6 +7,20 @@ import (
 	"os"
 )
 
+// EnsureTLSMin ensures the TLS config has a minimum version of TLS 1.2 set.
+// If cfg is nil it is returned unchanged. If MinVersion is already set it is
+// not overridden.
+func EnsureTLSMin(cfg *tls.Config) *tls.Config {
+	if cfg == nil {
+		return nil
+	}
+	if cfg.MinVersion == 0 {
+		cfg = cfg.Clone()
+		cfg.MinVersion = tls.VersionTLS12
+	}
+	return cfg
+}
+
 // BuildTLSConfig constructs a *tls.Config from the on-disk schema. serverName is the
 // fallback SNI value used when cfg.ServerName is empty (typically the host
 // portion of the dial address). Returns nil only when no TLS is configured;

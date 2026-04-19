@@ -77,19 +77,15 @@ type Input struct {
 // DiscoverFolders connects to the IMAP server described by in, logs in, and
 // returns the discovered folder layout. The connection is closed before return.
 func DiscoverFolders(ctx context.Context, in Input) (Folders, error) {
-	c, err := connect(ctx, in)
+	var f Folders
+	err := withClient(ctx, in, func(c *imapclient.Client) (err error) {
+		f, err = discoverFolders(c)
+		return
+	})
 	if err != nil {
 		return Folders{Inbox: defaultInbox}, err
 	}
-	defer func() {
-		_ = c.Logout().Wait()
-		_ = c.Close()
-	}()
-
-	if err := c.Login(in.Username, in.Password).Wait(); err != nil {
-		return Folders{Inbox: "INBOX"}, fmt.Errorf("login: %w", err)
-	}
-	return discoverFolders(c)
+	return f, nil
 }
 
 // WaitForSubject polls the given folders every PollInterval until a message
@@ -175,37 +171,24 @@ func WaitForSubject(ctx context.Context, in Input, subject string, folders []str
 // The go-imap/v2 client handles the fallback internally based on server caps.
 // Returns (moved, error) — moved=true if the move completed successfully.
 func MoveToInbox(ctx context.Context, in Input, sourceFolder string, uid imap.UID) (bool, error) {
-	c, err := connect(ctx, in)
-	if err != nil {
-		return false, err
-	}
-	defer func() {
-		_ = c.Logout().Wait()
-		_ = c.Close()
-	}()
-
-	if err := c.Login(in.Username, in.Password).Wait(); err != nil {
-		return false, fmt.Errorf("login: %w", err)
-	}
-
-	// SELECT read-write (not ReadOnly) so MOVE / STORE \Deleted can proceed.
-	if _, err := c.Select(sourceFolder, nil).Wait(); err != nil {
-		return false, fmt.Errorf("select %q: %w", sourceFolder, err)
-	}
-
-	uidSet := imap.UIDSetNum(uid)
-	if _, err := c.Move(uidSet, "INBOX").Wait(); err != nil {
-		return false, fmt.Errorf("move uid %d from %q to INBOX: %w", uid, sourceFolder, err)
-	}
-
-	return true, nil
+	err := withClient(ctx, in, func(c *imapclient.Client) error {
+		// SELECT read-write (not ReadOnly) so MOVE / STORE \Deleted can proceed.
+		if _, err := c.Select(sourceFolder, nil).Wait(); err != nil {
+			return fmt.Errorf("select %q: %w", sourceFolder, err)
+		}
+		uidSet := imap.UIDSetNum(uid)
+		if _, err := c.Move(uidSet, defaultInbox).Wait(); err != nil {
+			return fmt.Errorf("move uid %d from %q to INBOX: %w", uid, sourceFolder, err)
+		}
+		return nil
+	})
+	return err == nil, err
 }
 
-// Delete marks the given UIDs as \Deleted and expunges.
-func Delete(ctx context.Context, in Input, uids []imap.UID) error {
-	if len(uids) == 0 {
-		return nil
-	}
+// withClient handles the connect+login+cleanup boilerplate that every
+// IMAP entry point repeats. It is NOT used by WaitForSubject, which has
+// multiple error-returning sub-paths that don't fit cleanly inside fn.
+func withClient(ctx context.Context, in Input, fn func(*imapclient.Client) error) error {
 	c, err := connect(ctx, in)
 	if err != nil {
 		return err
@@ -215,22 +198,9 @@ func Delete(ctx context.Context, in Input, uids []imap.UID) error {
 		_ = c.Close()
 	}()
 	if err := c.Login(in.Username, in.Password).Wait(); err != nil {
-		return err
+		return fmt.Errorf("login: %w", err)
 	}
-	if _, err := c.Select(in.Mailbox, nil).Wait(); err != nil {
-		return err
-	}
-	set := imap.UIDSetNum(uids...)
-	if err := c.Store(set, &imap.StoreFlags{
-		Op:    imap.StoreFlagsAdd,
-		Flags: []imap.Flag{imap.FlagDeleted},
-	}, nil).Close(); err != nil {
-		return err
-	}
-	if err := c.UIDExpunge(set).Close(); err != nil {
-		return err
-	}
-	return nil
+	return fn(c)
 }
 
 func connect(ctx context.Context, in Input) (*imapclient.Client, error) {
@@ -241,7 +211,7 @@ func connect(ctx context.Context, in Input) (*imapclient.Client, error) {
 		if cfg == nil {
 			cfg, _ = config.BuildTLSConfig(config.TLSConfig{}, config.HostOnly(in.Server))
 		}
-		cfg = ensureTLSMin(cfg)
+		cfg = config.EnsureTLSMin(cfg)
 		td := &tls.Dialer{NetDialer: d, Config: cfg}
 		conn, err := td.DialContext(ctx, "tcp", in.Server)
 		if err != nil {
@@ -257,7 +227,7 @@ func connect(ctx context.Context, in Input) (*imapclient.Client, error) {
 		if cfg == nil {
 			cfg, _ = config.BuildTLSConfig(config.TLSConfig{}, config.HostOnly(in.Server))
 		}
-		cfg = ensureTLSMin(cfg)
+		cfg = config.EnsureTLSMin(cfg)
 		c, err := imapclient.NewStartTLS(conn, &imapclient.Options{TLSConfig: cfg})
 		if err != nil {
 			_ = conn.Close()
@@ -312,58 +282,40 @@ func fetchFirst(c *imapclient.Client, uid imap.UID) ([]byte, error) {
 	}
 }
 
-func ensureTLSMin(cfg *tls.Config) *tls.Config {
-	if cfg == nil {
-		return nil
-	}
-	if cfg.MinVersion == 0 {
-		cfg = cfg.Clone()
-		cfg.MinVersion = tls.VersionTLS12
-	}
-	return cfg
-}
-
 // Sweep deletes probe mails older than maxAge. A message is a "probe mail"
 // if it has an X-Probe-ID header. maxAge <= 0 matches everything tagged.
 func Sweep(ctx context.Context, in Input, maxAge time.Duration) (int, error) {
-	c, err := connect(ctx, in)
-	if err != nil {
-		return 0, err
-	}
-	defer func() {
-		_ = c.Logout().Wait()
-		_ = c.Close()
-	}()
-	if err := c.Login(in.Username, in.Password).Wait(); err != nil {
-		return 0, err
-	}
-	if _, err := c.Select(in.Mailbox, nil).Wait(); err != nil {
-		return 0, err
-	}
-
-	crit := &imap.SearchCriteria{
-		Header: []imap.SearchCriteriaHeaderField{{Key: "X-Probe-ID", Value: ""}},
-	}
-	if maxAge > 0 {
-		crit.Before = time.Now().Add(-maxAge)
-	}
-	data, err := c.UIDSearch(crit, nil).Wait()
-	if err != nil {
-		return 0, err
-	}
-	uids := data.AllUIDs()
-	if len(uids) == 0 {
-		return 0, nil
-	}
-	set := imap.UIDSetNum(uids...)
-	if err := c.Store(set, &imap.StoreFlags{
-		Op:    imap.StoreFlagsAdd,
-		Flags: []imap.Flag{imap.FlagDeleted},
-	}, nil).Close(); err != nil {
-		return 0, err
-	}
-	if err := c.UIDExpunge(set).Close(); err != nil {
-		return 0, err
-	}
-	return len(uids), nil
+	var n int
+	err := withClient(ctx, in, func(c *imapclient.Client) error {
+		if _, err := c.Select(in.Mailbox, nil).Wait(); err != nil {
+			return err
+		}
+		crit := &imap.SearchCriteria{
+			Header: []imap.SearchCriteriaHeaderField{{Key: "X-Probe-ID", Value: ""}},
+		}
+		if maxAge > 0 {
+			crit.Before = time.Now().Add(-maxAge)
+		}
+		data, err := c.UIDSearch(crit, nil).Wait()
+		if err != nil {
+			return err
+		}
+		uids := data.AllUIDs()
+		if len(uids) == 0 {
+			return nil
+		}
+		set := imap.UIDSetNum(uids...)
+		if err := c.Store(set, &imap.StoreFlags{
+			Op:    imap.StoreFlagsAdd,
+			Flags: []imap.Flag{imap.FlagDeleted},
+		}, nil).Close(); err != nil {
+			return err
+		}
+		if err := c.UIDExpunge(set).Close(); err != nil {
+			return err
+		}
+		n = len(uids)
+		return nil
+	})
+	return n, err
 }

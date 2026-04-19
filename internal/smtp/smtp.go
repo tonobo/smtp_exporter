@@ -120,7 +120,7 @@ func dial(ctx context.Context, in Input) (*esmtp.Client, error) {
 		if cfg == nil {
 			cfg, _ = config.BuildTLSConfig(config.TLSConfig{}, config.HostOnly(in.Server))
 		}
-		cfg = ensureTLSMin(cfg)
+		cfg = config.EnsureTLSMin(cfg)
 		td := &tls.Dialer{NetDialer: d, Config: cfg}
 		conn, err := td.DialContext(ctx, "tcp", in.Server)
 		if err != nil {
@@ -133,7 +133,7 @@ func dial(ctx context.Context, in Input) (*esmtp.Client, error) {
 		if cfg == nil {
 			cfg, _ = config.BuildTLSConfig(config.TLSConfig{}, config.HostOnly(in.Server))
 		}
-		cfg = ensureTLSMin(cfg)
+		cfg = config.EnsureTLSMin(cfg)
 		conn, err := d.DialContext(ctx, "tcp", in.Server)
 		if err != nil {
 			return nil, err
@@ -165,15 +165,4 @@ func recordSMTPErr(r *Result, err error) {
 			r.EnhancedStatusCode = se.EnhancedCode[0]*100 + se.EnhancedCode[1]*10 + se.EnhancedCode[2]
 		}
 	}
-}
-
-func ensureTLSMin(cfg *tls.Config) *tls.Config {
-	if cfg == nil {
-		return nil
-	}
-	if cfg.MinVersion == 0 {
-		cfg = cfg.Clone()
-		cfg.MinVersion = tls.VersionTLS12
-	}
-	return cfg
 }

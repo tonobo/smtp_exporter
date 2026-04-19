@@ -2,9 +2,7 @@ package mail
 
 import (
 	"net"
-	"net/mail"
 	"regexp"
-	"strings"
 )
 
 // bracket IP: [1.2.3.4] or [IPv6:2001:db8::1]
@@ -85,16 +83,6 @@ func isAllDigits(s string) bool {
 		}
 	}
 	return true
-}
-
-// ParseReceivedHeaders parses raw RFC-5322 bytes and returns the Received
-// header slice. Returns nil on parse error.
-func ParseReceivedHeaders(raw []byte) []string {
-	msg, err := mail.ReadMessage(strings.NewReader(string(raw)))
-	if err != nil {
-		return nil
-	}
-	return msg.Header["Received"]
 }
 
 func isPrivateOrLocal(ip net.IP) bool {

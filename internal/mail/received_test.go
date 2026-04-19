@@ -1,6 +1,8 @@
 package mail
 
 import (
+	"bytes"
+	"net/mail"
 	"os"
 	"testing"
 )
@@ -83,12 +85,21 @@ func TestLastReceivingHost_DovecotShortName(t *testing.T) {
 	}
 }
 
+func parseReceivedHeaders(t *testing.T, raw []byte) []string {
+	t.Helper()
+	msg, err := mail.ReadMessage(bytes.NewReader(raw))
+	if err != nil {
+		t.Fatalf("parse fixture: %v", err)
+	}
+	return msg.Header["Received"]
+}
+
 func TestFirstPublicSenderIP_Simple(t *testing.T) {
 	raw, err := os.ReadFile("../../testdata/received_chains/simple.eml")
 	if err != nil {
 		t.Fatalf("fixture: %v", err)
 	}
-	received := ParseReceivedHeaders(raw)
+	received := parseReceivedHeaders(t, raw)
 	ip, ok := FirstPublicSenderIP(received)
 	if !ok || ip.String() != "198.51.100.7" {
 		t.Fatalf("got %v ok=%v", ip, ok)
@@ -100,7 +111,7 @@ func TestFirstPublicSenderIP_MultiHopSkipsPrivate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("fixture: %v", err)
 	}
-	received := ParseReceivedHeaders(raw)
+	received := parseReceivedHeaders(t, raw)
 	ip, ok := FirstPublicSenderIP(received)
 	if !ok || ip.String() != "203.0.113.9" {
 		t.Fatalf("got %v ok=%v", ip, ok)
@@ -112,7 +123,7 @@ func TestFirstPublicSenderIP_IPv6(t *testing.T) {
 	if err != nil {
 		t.Fatalf("fixture: %v", err)
 	}
-	received := ParseReceivedHeaders(raw)
+	received := parseReceivedHeaders(t, raw)
 	ip, ok := FirstPublicSenderIP(received)
 	if !ok || ip.String() != "2001:db8::1" {
 		t.Fatalf("got %v ok=%v", ip, ok)

@@ -80,11 +80,11 @@ func parseSpamAssassin(h mail.Header, m *SpamMetrics) bool {
 			}
 		}
 		flag := strings.HasPrefix(strings.TrimSpace(v), "Yes")
-		m.Flag.WithLabelValues("spamassassin").Set(boolToFloat(flag))
+		m.Flag.WithLabelValues("spamassassin").Set(BoolToFloat(flag))
 		hit = true
 	}
 	if v := h.Get("X-Spam-Flag"); v != "" {
-		m.Flag.WithLabelValues("spamassassin").Set(boolToFloat(strings.EqualFold(strings.TrimSpace(v), "YES")))
+		m.Flag.WithLabelValues("spamassassin").Set(BoolToFloat(strings.EqualFold(strings.TrimSpace(v), "YES")))
 		hit = true
 	}
 	return hit
@@ -166,7 +166,8 @@ func parseZeroOne(v string) float64 {
 	return 0
 }
 
-func boolToFloat(b bool) float64 {
+// BoolToFloat converts a boolean to a Prometheus-friendly 0/1 float64.
+func BoolToFloat(b bool) float64 {
 	if b {
 		return 1
 	}

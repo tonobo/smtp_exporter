@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"strings"
 	"time"
 )
 
@@ -73,6 +72,8 @@ func isListedResponseCode(ip net.IP) bool {
 	return v4[3] >= 2 && v4[3] <= 11
 }
 
+const hexDigits = "0123456789abcdef"
+
 func reverseIP(ip net.IP) string {
 	if v4 := ip.To4(); v4 != nil {
 		return fmt.Sprintf("%d.%d.%d.%d", v4[3], v4[2], v4[1], v4[0])
@@ -82,11 +83,10 @@ func reverseIP(ip net.IP) string {
 	if full == nil {
 		return ""
 	}
-	nibbles := make([]string, 0, 32)
+	buf := make([]byte, 0, 64)
 	for i := len(full) - 1; i >= 0; i-- {
 		b := full[i]
-		nibbles = append(nibbles, fmt.Sprintf("%x", b&0x0f))
-		nibbles = append(nibbles, fmt.Sprintf("%x", b>>4))
+		buf = append(buf, hexDigits[b&0x0f], '.', hexDigits[b>>4], '.')
 	}
-	return strings.Join(nibbles, ".")
+	return string(buf[:len(buf)-1])
 }

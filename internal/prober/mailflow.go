@@ -2,8 +2,8 @@
 package prober
 
 import (
+	"bytes"
 	"context"
-	"crypto/tls"
 	"fmt"
 	"log/slog"
 	"net/mail"
@@ -140,9 +140,9 @@ func Run(
 	fm.phaseDuration.WithLabelValues("imap").Set(time.Since(imapStart).Seconds())
 	if err != nil {
 		logger.Warn("imap wait failed", "module", moduleName, "error", err.Error())
-		fm.imapLoginSuccess.Set(boolToFloat(!strings.Contains(err.Error(), "login")))
+		fm.imapLoginSuccess.Set(pmail.BoolToFloat(!strings.Contains(err.Error(), "login")))
 		fm.imapMessageReceived.Set(0)
-		runCleanup(ctx, logger, moduleName, m, g, fm, m.IMAP.Mailbox, imapTLS)
+		runCleanup(ctx, logger, moduleName, imapIn, g, fm, m.IMAP.Mailbox)
 		return false
 	}
 	fm.imapLoginSuccess.Set(1)
@@ -195,10 +195,10 @@ func Run(
 		if folderFound != "" {
 			cleanupMailbox = folderFound
 		}
-		runCleanup(ctx, logger, moduleName, m, g, fm, cleanupMailbox, imapTLS)
+		runCleanup(ctx, logger, moduleName, imapIn, g, fm, cleanupMailbox)
 	} else {
 		// Still run the age-based sweep on INBOX to clean up old probes.
-		runCleanup(ctx, logger, moduleName, m, g, fm, m.IMAP.Mailbox, imapTLS)
+		runCleanup(ctx, logger, moduleName, imapIn, g, fm, m.IMAP.Mailbox)
 	}
 
 	fm.success.Set(1)
@@ -208,7 +208,7 @@ func Run(
 
 func parseReceivedMail(ctx context.Context, fm *flowMetrics, raw []byte, r pdns.Resolver, g config.Global) {
 	// Parse once; share header slice with all consumers to avoid re-parsing.
-	msg, err := mail.ReadMessage(strings.NewReader(string(raw)))
+	msg, err := mail.ReadMessage(bytes.NewReader(raw))
 	if err != nil {
 		return
 	}
@@ -227,7 +227,7 @@ func parseReceivedMail(ctx context.Context, fm *flowMetrics, raw []byte, r pdns.
 		for _, res := range results {
 			fm.dnsblChecked.WithLabelValues(res.Zone).Set(1)
 			fm.dnsblDuration.WithLabelValues(res.Zone).Set(res.Duration.Seconds())
-			fm.dnsblListed.WithLabelValues(res.Zone, ip.String()).Set(boolToFloat(res.Listed))
+			fm.dnsblListed.WithLabelValues(res.Zone, ip.String()).Set(pmail.BoolToFloat(res.Listed))
 			if res.ResponseCode != "" {
 				fm.dnsblResultCode.WithLabelValues(res.Zone, ip.String(), res.ResponseCode).Set(1)
 			}
@@ -268,20 +268,16 @@ func classifyFolder(name string) string {
 }
 
 func runCleanup(
-	ctx context.Context, logger *slog.Logger, moduleName string, m config.Module, g config.Global, fm *flowMetrics, mailbox string,
-	imapTLS *tls.Config,
+	ctx context.Context, logger *slog.Logger, moduleName string, imapIn imap.Input, g config.Global, fm *flowMetrics, mailbox string,
 ) {
 	if !g.Cleanup.Enabled {
 		return
 	}
 	t0 := time.Now()
 	defer func() { fm.phaseDuration.WithLabelValues("cleanup").Set(time.Since(t0).Seconds()) }()
-	n, err := imap.Sweep(ctx, imap.Input{
-		Server: m.IMAP.Server, TLS: m.IMAP.TLS,
-		Username: m.IMAP.Auth.Username, Password: m.IMAP.Auth.Password,
-		Mailbox: mailbox, PollInterval: m.IMAP.PollInterval,
-		TLSConfig: imapTLS,
-	}, g.Cleanup.MaxAge)
+	in := imapIn
+	in.Mailbox = mailbox
+	n, err := imap.Sweep(ctx, in, g.Cleanup.MaxAge)
 	if err != nil {
 		logger.Warn("imap cleanup failed", "module", moduleName, "error", err.Error())
 		return
@@ -290,10 +286,10 @@ func runCleanup(
 }
 
 func writeSMTPMetrics(fm *flowMetrics, r psmtp.Result) {
-	fm.smtpSendSuccess.Set(boolToFloat(r.Success))
+	fm.smtpSendSuccess.Set(pmail.BoolToFloat(r.Success))
 	fm.smtpStatus.Set(float64(r.StatusCode))
 	fm.smtpEnhancedStatus.Set(float64(r.EnhancedStatusCode))
-	fm.smtpTLS.Set(boolToFloat(r.UsedTLS))
+	fm.smtpTLS.Set(pmail.BoolToFloat(r.UsedTLS))
 	if r.UsedTLS {
 		fm.smtpTLSVersion.WithLabelValues(r.TLSVersion).Set(1)
 	}
@@ -303,11 +299,4 @@ func writeSMTPMetrics(fm *flowMetrics, r psmtp.Result) {
 	if r.TLSFingerprint != "" {
 		fm.smtpTLSFingerprint.WithLabelValues(r.TLSFingerprint).Set(1)
 	}
-}
-
-func boolToFloat(b bool) float64 {
-	if b {
-		return 1
-	}
-	return 0
 }

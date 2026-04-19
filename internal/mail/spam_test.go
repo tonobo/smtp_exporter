@@ -1,9 +1,9 @@
 package mail
 
 import (
+	"bytes"
 	"net/mail"
 	"os"
-	"strings"
 	"testing"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -15,7 +15,7 @@ func loadSpamHeader(t *testing.T, path string) mail.Header {
 	if err != nil {
 		t.Fatalf("fixture: %v", err)
 	}
-	m, err := mail.ReadMessage(strings.NewReader(string(raw)))
+	m, err := mail.ReadMessage(bytes.NewReader(raw))
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
