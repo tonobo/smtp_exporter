@@ -108,7 +108,7 @@ func TestRedactPasswords(t *testing.T) {
 func TestHistory_Bounded(t *testing.T) {
 	h := NewHistory(100)
 	for i := 0; i < 150; i++ {
-		h.Add(fmt.Sprintf("mod%d", i), "target@example.com", "", i%2 == 0)
+		h.Add(fmt.Sprintf("mod%d", i), "target@example.com", i%2 == 0)
 	}
 	entries := h.List()
 	if len(entries) != 100 {
@@ -165,7 +165,7 @@ func TestIndexPage_EscapesHTML(t *testing.T) {
 	sc := config.NewSafeConfig()
 	h := NewHandler(discardLogger(), sc, pdns.NewFake(), func() error { return nil }, prometheus.NewRegistry())
 	// Add a history entry with an HTML-injection module name.
-	h.History.Add("<script>alert(1)</script>", "target@example.com", "", false)
+	h.History.Add("<script>alert(1)</script>", "target@example.com", false)
 
 	mux := http.NewServeMux()
 	h.Register(mux)

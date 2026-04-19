@@ -6,7 +6,6 @@ import (
 	"crypto/tls"
 	"fmt"
 	"log/slog"
-	"net"
 	"net/mail"
 	"os"
 	"strings"
@@ -58,12 +57,12 @@ func Run(
 
 	// Build TLS configs — a misconfigured ca_file aborts the probe rather than
 	// silently falling back to the system pool.
-	smtpTLS, err := config.BuildTLSConfig(m.SMTP.TLSConfig, hostOnly(m.SMTP.Server))
+	smtpTLS, err := config.BuildTLSConfig(m.SMTP.TLSConfig, config.HostOnly(m.SMTP.Server))
 	if err != nil {
 		logger.Warn("smtp tls_config invalid", "module", moduleName, "error", err.Error())
 		return false
 	}
-	imapTLS, err := config.BuildTLSConfig(m.IMAP.TLSConfig, hostOnly(m.IMAP.Server))
+	imapTLS, err := config.BuildTLSConfig(m.IMAP.TLSConfig, config.HostOnly(m.IMAP.Server))
 	if err != nil {
 		logger.Warn("imap tls_config invalid", "module", moduleName, "error", err.Error())
 		return false
@@ -311,12 +310,4 @@ func boolToFloat(b bool) float64 {
 		return 1
 	}
 	return 0
-}
-
-func hostOnly(addr string) string {
-	h, _, err := net.SplitHostPort(addr)
-	if err != nil {
-		return addr
-	}
-	return h
 }

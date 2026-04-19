@@ -37,6 +37,7 @@ type Handler struct {
 func NewHandler(
 	logger *slog.Logger, sc *config.SafeConfig, r pdns.Resolver, reload func() error, internalReg prometheus.Registerer,
 ) *Handler {
+	// 100 entries — see NewHistory for sizing rationale.
 	h := &Handler{Logger: logger, Config: sc, Resolver: r, Reload: reload, History: NewHistory(100)}
 	h.unknownModule = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "smtp_exporter_unknown_module_total",
@@ -90,9 +91,10 @@ func (h *Handler) probe(w http.ResponseWriter, r *http.Request) {
 	}
 	h.probeTotal.WithLabelValues(name, outcome).Inc()
 
+	h.History.Add(name, mod.SMTP.MailTo, ok)
+
 	debug := r.URL.Query().Get("debug") == "true"
 	body := renderMetrics(reg)
-	h.History.Add(name, mod.SMTP.MailTo, body, ok)
 
 	if debug {
 		w.Header().Set("Content-Type", "text/plain")

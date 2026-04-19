@@ -12,7 +12,6 @@ type HistoryEntry struct {
 	Target    string
 	Success   bool
 	Timestamp time.Time
-	Output    string
 }
 
 // History is a bounded FIFO of probe outcomes.
@@ -24,6 +23,7 @@ type History struct {
 }
 
 // NewHistory returns a bounded FIFO of the last maxItems probe outcomes.
+// 100 entries × ~100B metadata each ≈ ~10KB worst-case retention (Output field removed).
 func NewHistory(maxItems int) *History {
 	if maxItems <= 0 {
 		maxItems = 100
@@ -32,11 +32,11 @@ func NewHistory(maxItems int) *History {
 }
 
 // Add records a probe outcome.
-func (h *History) Add(moduleName, target, output string, success bool) {
+func (h *History) Add(moduleName, target string, success bool) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.nextID++
-	e := HistoryEntry{ID: h.nextID, Module: moduleName, Target: target, Success: success, Timestamp: time.Now(), Output: output}
+	e := HistoryEntry{ID: h.nextID, Module: moduleName, Target: target, Success: success, Timestamp: time.Now()}
 	h.items = append(h.items, e)
 	if len(h.items) > h.maxItems {
 		h.items = h.items[len(h.items)-h.maxItems:]
@@ -50,17 +50,4 @@ func (h *History) List() []HistoryEntry {
 	out := make([]HistoryEntry, len(h.items))
 	copy(out, h.items)
 	return out
-}
-
-// Get returns the entry with the given ID, or nil if not found.
-func (h *History) Get(id int64) *HistoryEntry {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	for i := range h.items {
-		if h.items[i].ID == id {
-			e := h.items[i]
-			return &e
-		}
-	}
-	return nil
 }

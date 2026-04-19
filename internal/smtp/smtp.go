@@ -11,6 +11,8 @@ import (
 
 	sasl "github.com/emersion/go-sasl"
 	esmtp "github.com/emersion/go-smtp"
+
+	"github.com/tonobo/smtp_exporter/internal/config"
 )
 
 // Input fully describes one SMTP send attempt.
@@ -116,7 +118,7 @@ func dial(ctx context.Context, in Input) (*esmtp.Client, error) {
 	case "tls":
 		cfg := in.TLSConfig
 		if cfg == nil {
-			cfg = &tls.Config{ServerName: hostOnly(in.Server), MinVersion: tls.VersionTLS12}
+			cfg, _ = config.BuildTLSConfig(config.TLSConfig{}, config.HostOnly(in.Server))
 		}
 		cfg = ensureTLSMin(cfg)
 		td := &tls.Dialer{NetDialer: d, Config: cfg}
@@ -129,7 +131,7 @@ func dial(ctx context.Context, in Input) (*esmtp.Client, error) {
 	case "starttls":
 		cfg := in.TLSConfig
 		if cfg == nil {
-			cfg = &tls.Config{ServerName: hostOnly(in.Server), MinVersion: tls.VersionTLS12}
+			cfg, _ = config.BuildTLSConfig(config.TLSConfig{}, config.HostOnly(in.Server))
 		}
 		cfg = ensureTLSMin(cfg)
 		conn, err := d.DialContext(ctx, "tcp", in.Server)
@@ -174,12 +176,4 @@ func ensureTLSMin(cfg *tls.Config) *tls.Config {
 		cfg.MinVersion = tls.VersionTLS12
 	}
 	return cfg
-}
-
-func hostOnly(addr string) string {
-	h, _, err := net.SplitHostPort(addr)
-	if err != nil {
-		return addr
-	}
-	return h
 }

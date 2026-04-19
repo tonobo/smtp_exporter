@@ -91,6 +91,7 @@ func run() int {
 	mux := http.NewServeMux()
 	h.Register(mux)
 
+	// ReadHeaderTimeout: slowloris guard for management endpoints; well above any legitimate header arrival.
 	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 	addrs := []string{*listenAddress}
 	systemd := false

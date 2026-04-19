@@ -13,6 +13,8 @@ import (
 
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapclient"
+
+	"github.com/tonobo/smtp_exporter/internal/config"
 )
 
 const defaultInbox = "INBOX"
@@ -21,8 +23,7 @@ const defaultInbox = "INBOX"
 // Empty string means the folder was not found on this server.
 type Folders struct {
 	Inbox string // always "INBOX"
-	Spam  string // "" if not found — may be set by either \Junk attr or well-known name
-	Junk  string // "" if not found — set when \Junk attr is present
+	Spam  string // "" if not found — set by \Junk attr (preferred) or well-known name
 }
 
 // discoverFolders issues LIST "" "*" with RETURN SPECIAL-USE and categorizes
@@ -41,8 +42,7 @@ func discoverFolders(c *imapclient.Client) (Folders, error) {
 	for _, mb := range mailboxes {
 		for _, attr := range mb.Attrs {
 			if attr == imap.MailboxAttrJunk {
-				f.Junk = mb.Mailbox
-				f.Spam = mb.Mailbox // alias: Spam always points to where spam lives
+				f.Spam = mb.Mailbox // \Junk attribute: Spam points to where spam lives
 			}
 		}
 	}
@@ -239,7 +239,7 @@ func connect(ctx context.Context, in Input) (*imapclient.Client, error) {
 	case "tls":
 		cfg := in.TLSConfig
 		if cfg == nil {
-			cfg = &tls.Config{ServerName: hostOnly(in.Server), MinVersion: tls.VersionTLS12}
+			cfg, _ = config.BuildTLSConfig(config.TLSConfig{}, config.HostOnly(in.Server))
 		}
 		cfg = ensureTLSMin(cfg)
 		td := &tls.Dialer{NetDialer: d, Config: cfg}
@@ -255,7 +255,7 @@ func connect(ctx context.Context, in Input) (*imapclient.Client, error) {
 		}
 		cfg := in.TLSConfig
 		if cfg == nil {
-			cfg = &tls.Config{ServerName: hostOnly(in.Server), MinVersion: tls.VersionTLS12}
+			cfg, _ = config.BuildTLSConfig(config.TLSConfig{}, config.HostOnly(in.Server))
 		}
 		cfg = ensureTLSMin(cfg)
 		c, err := imapclient.NewStartTLS(conn, &imapclient.Options{TLSConfig: cfg})
@@ -321,14 +321,6 @@ func ensureTLSMin(cfg *tls.Config) *tls.Config {
 		cfg.MinVersion = tls.VersionTLS12
 	}
 	return cfg
-}
-
-func hostOnly(addr string) string {
-	h, _, err := net.SplitHostPort(addr)
-	if err != nil {
-		return addr
-	}
-	return h
 }
 
 // Sweep deletes probe mails older than maxAge. A message is a "probe mail"

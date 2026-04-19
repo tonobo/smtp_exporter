@@ -3,6 +3,7 @@ package config
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"sync/atomic"
 	"time"
@@ -74,6 +75,16 @@ type TLSConfig struct {
 	InsecureSkipVerify bool   `yaml:"insecure_skip_verify"`
 	ServerName         string `yaml:"server_name"`
 	CAFile             string `yaml:"ca_file"`
+}
+
+// HostOnly returns the host portion of a host:port address.
+// If SplitHostPort fails (e.g. the address has no port), addr is returned unchanged.
+func HostOnly(addr string) string {
+	h, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return addr
+	}
+	return h
 }
 
 // Load reads and validates a config file.
