@@ -1,4 +1,4 @@
-package message
+package mail
 
 import (
 	"os"
@@ -10,7 +10,8 @@ func TestFirstPublicSenderIP_Simple(t *testing.T) {
 	if err != nil {
 		t.Fatalf("fixture: %v", err)
 	}
-	ip, ok := FirstPublicSenderIP(raw)
+	received := ParseReceivedHeaders(raw)
+	ip, ok := FirstPublicSenderIP(received)
 	if !ok || ip.String() != "198.51.100.7" {
 		t.Fatalf("got %v ok=%v", ip, ok)
 	}
@@ -21,7 +22,8 @@ func TestFirstPublicSenderIP_MultiHopSkipsPrivate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("fixture: %v", err)
 	}
-	ip, ok := FirstPublicSenderIP(raw)
+	received := ParseReceivedHeaders(raw)
+	ip, ok := FirstPublicSenderIP(received)
 	if !ok || ip.String() != "203.0.113.9" {
 		t.Fatalf("got %v ok=%v", ip, ok)
 	}
@@ -32,7 +34,8 @@ func TestFirstPublicSenderIP_IPv6(t *testing.T) {
 	if err != nil {
 		t.Fatalf("fixture: %v", err)
 	}
-	ip, ok := FirstPublicSenderIP(raw)
+	received := ParseReceivedHeaders(raw)
+	ip, ok := FirstPublicSenderIP(received)
 	if !ok || ip.String() != "2001:db8::1" {
 		t.Fatalf("got %v ok=%v", ip, ok)
 	}

@@ -1,4 +1,4 @@
-package message
+package mail
 
 import (
 	"net"
@@ -13,12 +13,10 @@ var ipInBrackets = regexp.MustCompile(`\[(?:IPv6:)?([0-9a-fA-F:.]+)\]`)
 // FirstPublicSenderIP walks the Received: header chain from oldest to newest
 // and returns the first IP literal that parses and is not in a private,
 // loopback, link-local, or unspecified range.
-func FirstPublicSenderIP(raw []byte) (net.IP, bool) {
-	msg, err := mail.ReadMessage(strings.NewReader(string(raw)))
-	if err != nil {
-		return nil, false
-	}
-	received := msg.Header["Received"]
+//
+// received is the slice from msg.Header["Received"] — oldest entry is last
+// (headers are prepended as mail flows). Pass nil/empty to get (nil, false).
+func FirstPublicSenderIP(received []string) (net.IP, bool) {
 	// Received headers are prepended as mail flows, so the oldest (most-external)
 	// is last in the slice. Walk oldest → newest.
 	for i := len(received) - 1; i >= 0; i-- {
@@ -36,6 +34,16 @@ func FirstPublicSenderIP(raw []byte) (net.IP, bool) {
 		return ip, true
 	}
 	return nil, false
+}
+
+// ParseReceivedHeaders parses raw RFC-5322 bytes and returns the Received
+// header slice. Returns nil on parse error.
+func ParseReceivedHeaders(raw []byte) []string {
+	msg, err := mail.ReadMessage(strings.NewReader(string(raw)))
+	if err != nil {
+		return nil
+	}
+	return msg.Header["Received"]
 }
 
 func isPrivateOrLocal(ip net.IP) bool {

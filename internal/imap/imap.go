@@ -63,8 +63,8 @@ func discoverFolders(c *imapclient.Client) (Folders, error) {
 	return f, nil
 }
 
-// ClientInput describes an IMAP connection target.
-type ClientInput struct {
+// Input describes an IMAP connection target.
+type Input struct {
 	Server       string // host:port
 	TLS          string // starttls|tls|no
 	Username     string
@@ -76,7 +76,7 @@ type ClientInput struct {
 
 // DiscoverFolders connects to the IMAP server described by in, logs in, and
 // returns the discovered folder layout. The connection is closed before return.
-func DiscoverFolders(ctx context.Context, in ClientInput) (Folders, error) {
+func DiscoverFolders(ctx context.Context, in Input) (Folders, error) {
 	c, err := connect(ctx, in)
 	if err != nil {
 		return Folders{Inbox: defaultInbox}, err
@@ -97,7 +97,7 @@ func DiscoverFolders(ctx context.Context, in ClientInput) (Folders, error) {
 //
 // A single-element slice []string{in.Mailbox} reproduces the original
 // single-folder behaviour.
-func WaitForSubject(ctx context.Context, in ClientInput, subject string, folders []string) ([]byte, string, imap.UID, error) {
+func WaitForSubject(ctx context.Context, in Input, subject string, folders []string) ([]byte, string, imap.UID, error) {
 	c, err := connect(ctx, in)
 	if err != nil {
 		return nil, "", 0, err
@@ -150,7 +150,7 @@ func WaitForSubject(ctx context.Context, in ClientInput, subject string, folders
 // MOVE (RFC 6851) and falling back to COPY + mark \Deleted + EXPUNGE.
 // The go-imap/v2 client handles the fallback internally based on server caps.
 // Returns (moved, error) — moved=true if the move completed successfully.
-func MoveToInbox(ctx context.Context, in ClientInput, sourceFolder string, uid imap.UID) (bool, error) {
+func MoveToInbox(ctx context.Context, in Input, sourceFolder string, uid imap.UID) (bool, error) {
 	c, err := connect(ctx, in)
 	if err != nil {
 		return false, err
@@ -175,7 +175,7 @@ func MoveToInbox(ctx context.Context, in ClientInput, sourceFolder string, uid i
 }
 
 // Delete marks the given UIDs as \Deleted and expunges.
-func Delete(ctx context.Context, in ClientInput, uids []imap.UID) error {
+func Delete(ctx context.Context, in Input, uids []imap.UID) error {
 	if len(uids) == 0 {
 		return nil
 	}
@@ -203,7 +203,7 @@ func Delete(ctx context.Context, in ClientInput, uids []imap.UID) error {
 	return nil
 }
 
-func connect(ctx context.Context, in ClientInput) (*imapclient.Client, error) {
+func connect(ctx context.Context, in Input) (*imapclient.Client, error) {
 	d := &net.Dialer{}
 	switch in.TLS {
 	case "tls":
@@ -302,7 +302,7 @@ func hostOnly(addr string) string {
 
 // Sweep deletes probe mails older than maxAge. A message is a "probe mail"
 // if it has an X-Probe-ID header. maxAge <= 0 matches everything tagged.
-func Sweep(ctx context.Context, in ClientInput, maxAge time.Duration) (int, error) {
+func Sweep(ctx context.Context, in Input, maxAge time.Duration) (int, error) {
 	c, err := connect(ctx, in)
 	if err != nil {
 		return 0, err

@@ -1,5 +1,4 @@
-// Package dnsbl resolves DNS blacklist queries for a given IP.
-package dnsbl
+package dns
 
 import (
 	"context"
@@ -8,12 +7,10 @@ import (
 	"net"
 	"strings"
 	"time"
-
-	pdns "github.com/tonobo/smtp_exporter/internal/dns"
 )
 
-// Result captures one zone lookup outcome.
-type Result struct {
+// DNSBLResult captures one zone lookup outcome.
+type DNSBLResult struct {
 	Zone     string
 	IP       net.IP
 	Listed   bool
@@ -26,26 +23,26 @@ type Result struct {
 	ResponseCode string
 }
 
-// Query looks up ip against every zone and returns a Result per zone.
+// QueryBlacklist looks up ip against every zone and returns a DNSBLResult per zone.
 // A NXDOMAIN response means "not listed". A non-NXDOMAIN response is
 // treated as listed only if the A-record value falls inside the real
 // listing range (see isListedResponseCode). Return codes like
 // 127.255.255.252/254/255 (open-resolver refusal, rate-limit, misuse)
 // populate ResponseCode but leave Listed=false so a throttled resolver
 // does not produce false-positive listing metrics.
-func Query(ctx context.Context, r pdns.Resolver, ip net.IP, zones []string) []Result {
-	out := make([]Result, 0, len(zones))
+func QueryBlacklist(ctx context.Context, r Resolver, ip net.IP, zones []string) []DNSBLResult {
+	out := make([]DNSBLResult, 0, len(zones))
 	rev := reverseIP(ip)
 	for _, z := range zones {
 		start := time.Now()
 		name := rev + "." + z
 		addrs, err := r.LookupHost(ctx, name)
-		res := Result{Zone: z, IP: ip, Duration: time.Since(start)}
+		res := DNSBLResult{Zone: z, IP: ip, Duration: time.Since(start)}
 		switch {
 		case err == nil && len(addrs) > 0:
 			res.ResponseCode = addrs[0]
 			res.Listed = isListedResponseCode(net.ParseIP(addrs[0]))
-		case errors.Is(err, pdns.ErrNXDomain):
+		case errors.Is(err, ErrNXDomain):
 			res.Listed = false
 		case err != nil:
 			res.Err = err

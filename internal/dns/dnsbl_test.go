@@ -1,19 +1,17 @@
-package dnsbl
+package dns
 
 import (
 	"context"
 	"net"
 	"testing"
-
-	pdns "github.com/tonobo/smtp_exporter/internal/dns"
 )
 
-func TestQuery_Listed(t *testing.T) {
-	r := pdns.NewFake()
+func TestQueryBlacklist_Listed(t *testing.T) {
+	r := NewFake()
 	r.Host["7.100.51.198.zen.spamhaus.org"] = []string{"127.0.0.2"}
 
 	ctx := context.Background()
-	res := Query(ctx, r, net.ParseIP("198.51.100.7"), []string{"zen.spamhaus.org"})
+	res := QueryBlacklist(ctx, r, net.ParseIP("198.51.100.7"), []string{"zen.spamhaus.org"})
 
 	if len(res) != 1 {
 		t.Fatalf("results: %d", len(res))
@@ -26,10 +24,10 @@ func TestQuery_Listed(t *testing.T) {
 	}
 }
 
-func TestQuery_NotListed(t *testing.T) {
-	r := pdns.NewFake()
+func TestQueryBlacklist_NotListed(t *testing.T) {
+	r := NewFake()
 	// no entry → NXDOMAIN
-	res := Query(context.Background(), r, net.ParseIP("203.0.113.9"), []string{"bl.spamcop.net"})
+	res := QueryBlacklist(context.Background(), r, net.ParseIP("203.0.113.9"), []string{"bl.spamcop.net"})
 	if len(res) != 1 || res[0].Listed {
 		t.Fatalf("%#v", res)
 	}
@@ -38,14 +36,14 @@ func TestQuery_NotListed(t *testing.T) {
 	}
 }
 
-// TestQuery_RateLimitCodes covers Spamhaus return codes that indicate
+// TestQueryBlacklist_RateLimitCodes covers Spamhaus return codes that indicate
 // open-resolver refusal, rate-limiting, or typing errors. These are
 // NOT listings — a clean IP querying from a throttled resolver must
 // not be reported as listed.
 //
 // Reference:
 // https://www.spamhaus.org/blocklists/dnsbl-usage/return-codes/
-func TestQuery_RateLimitCodes(t *testing.T) {
+func TestQueryBlacklist_RateLimitCodes(t *testing.T) {
 	cases := []struct {
 		name string
 		code string
@@ -56,10 +54,10 @@ func TestQuery_RateLimitCodes(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			r := pdns.NewFake()
+			r := NewFake()
 			r.Host["7.100.51.198.zen.spamhaus.org"] = []string{tc.code}
 
-			res := Query(context.Background(), r, net.ParseIP("198.51.100.7"), []string{"zen.spamhaus.org"})
+			res := QueryBlacklist(context.Background(), r, net.ParseIP("198.51.100.7"), []string{"zen.spamhaus.org"})
 			if len(res) != 1 {
 				t.Fatalf("results: %d", len(res))
 			}
@@ -73,10 +71,10 @@ func TestQuery_RateLimitCodes(t *testing.T) {
 	}
 }
 
-// TestQuery_ListingRangeBoundaries covers the inclusive boundaries of
+// TestQueryBlacklist_ListingRangeBoundaries covers the inclusive boundaries of
 // the real-listing range (127.0.0.2..127.0.0.11) and the off-by-one
 // neighbours that must NOT count as listed.
-func TestQuery_ListingRangeBoundaries(t *testing.T) {
+func TestQueryBlacklist_ListingRangeBoundaries(t *testing.T) {
 	cases := []struct {
 		name       string
 		code       string
@@ -94,10 +92,10 @@ func TestQuery_ListingRangeBoundaries(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			r := pdns.NewFake()
+			r := NewFake()
 			r.Host["7.100.51.198.zen.spamhaus.org"] = []string{tc.code}
 
-			res := Query(context.Background(), r, net.ParseIP("198.51.100.7"), []string{"zen.spamhaus.org"})
+			res := QueryBlacklist(context.Background(), r, net.ParseIP("198.51.100.7"), []string{"zen.spamhaus.org"})
 			if len(res) != 1 {
 				t.Fatalf("results: %d", len(res))
 			}

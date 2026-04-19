@@ -1,6 +1,4 @@
-// Package spam extracts spam-scanner verdicts from mail headers and exports
-// them as Prometheus gauges under the probe_spam_* namespace.
-package spam
+package mail
 
 import (
 	"net/mail"
@@ -11,16 +9,16 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-// Metrics is the Prometheus surface for this package.
-type Metrics struct {
+// SpamMetrics is the Prometheus surface for spam-score parsing.
+type SpamMetrics struct {
 	Found *prometheus.GaugeVec
 	Score *prometheus.GaugeVec
 	Flag  *prometheus.GaugeVec
 }
 
-// NewMetrics registers the metrics on reg.
-func NewMetrics(reg prometheus.Registerer) *Metrics {
-	m := &Metrics{
+// NewSpamMetrics registers the metrics on reg.
+func NewSpamMetrics(reg prometheus.Registerer) *SpamMetrics {
+	m := &SpamMetrics{
 		Found: prometheus.NewGaugeVec(prometheus.GaugeOpts{
 			Name: "probe_spam_score_found",
 			Help: "1 if a spam score from the given source was parsed.",
@@ -38,9 +36,9 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 	return m
 }
 
-type parser func(h mail.Header, m *Metrics) bool
+type spamParser func(h mail.Header, m *SpamMetrics) bool
 
-var parsers = map[string]parser{
+var spamParsers = map[string]spamParser{
 	"spamassassin": parseSpamAssassin,
 	"rspamd":       parseRspamd,
 	"gmail":        parseGmail,
@@ -50,9 +48,9 @@ var parsers = map[string]parser{
 	"mimecast":     parseMimecast,
 }
 
-// Observe tries each parser; a parser is "hit" when it writes any metric.
-func (m *Metrics) Observe(h mail.Header) {
-	for src, p := range parsers {
+// ObserveSpam tries each parser; a parser is "hit" when it writes any metric.
+func (m *SpamMetrics) ObserveSpam(h mail.Header) {
+	for src, p := range spamParsers {
 		if p(h, m) {
 			m.Found.WithLabelValues(src).Set(1)
 		}
@@ -65,7 +63,7 @@ var (
 	barracudaRE   = regexp.MustCompile(`([-+]?\d+(?:\.\d+)?)`)
 )
 
-func parseSpamAssassin(h mail.Header, m *Metrics) bool {
+func parseSpamAssassin(h mail.Header, m *SpamMetrics) bool {
 	hit := false
 	if v := h.Get("X-Spam-Score"); v != "" {
 		if s, err := strconv.ParseFloat(strings.TrimSpace(v), 64); err == nil {
@@ -92,8 +90,8 @@ func parseSpamAssassin(h mail.Header, m *Metrics) bool {
 	return hit
 }
 
-func parseRspamd(h mail.Header, m *Metrics) bool {
-	for _, k := range []string{"X-Rspamd-Score", "X-Spamd-Result", "X-Rspamd-Result"} {
+func parseRspamd(h mail.Header, m *SpamMetrics) bool {
+	for _, k := range []string{"X-Rspamd-Score", "X-Spamd-Result", "X-Rspamd-Result", "X-Spam-Result"} {
 		v := h.Get(k)
 		if v == "" {
 			continue
@@ -108,7 +106,7 @@ func parseRspamd(h mail.Header, m *Metrics) bool {
 	return false
 }
 
-func parseGmail(h mail.Header, m *Metrics) bool {
+func parseGmail(h mail.Header, m *SpamMetrics) bool {
 	hit := false
 	if v := h.Get("X-Gm-Spam"); v != "" {
 		m.Flag.WithLabelValues("gmail").Set(parseZeroOne(v))
@@ -121,7 +119,7 @@ func parseGmail(h mail.Header, m *Metrics) bool {
 	return hit
 }
 
-func parseMicrosoft(h mail.Header, m *Metrics) bool {
+func parseMicrosoft(h mail.Header, m *SpamMetrics) bool {
 	if v := h.Get("X-MS-Exchange-Organization-SCL"); v != "" {
 		if s, err := strconv.ParseFloat(strings.TrimSpace(v), 64); err == nil {
 			m.Score.WithLabelValues("microsoft").Set(s)
@@ -131,7 +129,7 @@ func parseMicrosoft(h mail.Header, m *Metrics) bool {
 	return false
 }
 
-func parseBarracuda(h mail.Header, m *Metrics) bool {
+func parseBarracuda(h mail.Header, m *SpamMetrics) bool {
 	if v := h.Get("X-Barracuda-Spam-Score"); v != "" {
 		if mt := barracudaRE.FindStringSubmatch(v); mt != nil {
 			if s, err := strconv.ParseFloat(mt[1], 64); err == nil {
@@ -143,7 +141,7 @@ func parseBarracuda(h mail.Header, m *Metrics) bool {
 	return false
 }
 
-func parseProofpoint(h mail.Header, m *Metrics) bool {
+func parseProofpoint(h mail.Header, m *SpamMetrics) bool {
 	if h.Get("X-Proofpoint-Spam-Details") != "" {
 		m.Flag.WithLabelValues("proofpoint").Set(1)
 		return true
@@ -151,7 +149,7 @@ func parseProofpoint(h mail.Header, m *Metrics) bool {
 	return false
 }
 
-func parseMimecast(h mail.Header, m *Metrics) bool {
+func parseMimecast(h mail.Header, m *SpamMetrics) bool {
 	if v := h.Get("X-Mimecast-Spam-Score"); v != "" {
 		if s, err := strconv.ParseFloat(strings.TrimSpace(v), 64); err == nil {
 			m.Score.WithLabelValues("mimecast").Set(s)

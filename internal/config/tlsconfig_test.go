@@ -1,4 +1,4 @@
-package tlsutil_test
+package config_test
 
 import (
 	"crypto/rand"
@@ -14,11 +14,10 @@ import (
 	"time"
 
 	"github.com/tonobo/smtp_exporter/internal/config"
-	"github.com/tonobo/smtp_exporter/internal/tlsutil"
 )
 
-func TestBuild_DefaultsMinTLS12(t *testing.T) {
-	out, err := tlsutil.Build(config.TLSConfig{}, "host.example")
+func TestBuildTLSConfig_DefaultsMinTLS12(t *testing.T) {
+	out, err := config.BuildTLSConfig(config.TLSConfig{}, "host.example")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -30,8 +29,8 @@ func TestBuild_DefaultsMinTLS12(t *testing.T) {
 	}
 }
 
-func TestBuild_ServerNameFallback(t *testing.T) {
-	out, err := tlsutil.Build(config.TLSConfig{}, "fallback.example")
+func TestBuildTLSConfig_ServerNameFallback(t *testing.T) {
+	out, err := config.BuildTLSConfig(config.TLSConfig{}, "fallback.example")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -40,8 +39,8 @@ func TestBuild_ServerNameFallback(t *testing.T) {
 	}
 }
 
-func TestBuild_ServerNameOverride(t *testing.T) {
-	out, err := tlsutil.Build(config.TLSConfig{ServerName: "x.example"}, "fallback.example")
+func TestBuildTLSConfig_ServerNameOverride(t *testing.T) {
+	out, err := config.BuildTLSConfig(config.TLSConfig{ServerName: "x.example"}, "fallback.example")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -50,8 +49,8 @@ func TestBuild_ServerNameOverride(t *testing.T) {
 	}
 }
 
-func TestBuild_InsecureSkipVerify(t *testing.T) {
-	out, err := tlsutil.Build(config.TLSConfig{InsecureSkipVerify: true}, "host.example")
+func TestBuildTLSConfig_InsecureSkipVerify(t *testing.T) {
+	out, err := config.BuildTLSConfig(config.TLSConfig{InsecureSkipVerify: true}, "host.example")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -60,7 +59,7 @@ func TestBuild_InsecureSkipVerify(t *testing.T) {
 	}
 }
 
-func TestBuild_CAFile_Loaded(t *testing.T) {
+func TestBuildTLSConfig_CAFile_Loaded(t *testing.T) {
 	pemBytes := selfSignedPEM(t)
 	dir := t.TempDir()
 	caPath := filepath.Join(dir, "ca.pem")
@@ -68,7 +67,7 @@ func TestBuild_CAFile_Loaded(t *testing.T) {
 		t.Fatalf("write ca file: %v", err)
 	}
 
-	out, err := tlsutil.Build(config.TLSConfig{CAFile: caPath}, "host.example")
+	out, err := config.BuildTLSConfig(config.TLSConfig{CAFile: caPath}, "host.example")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -90,21 +89,21 @@ func TestBuild_CAFile_Loaded(t *testing.T) {
 	t.Errorf("loaded RootCAs pool does not contain the expected certificate subject")
 }
 
-func TestBuild_CAFile_NotFound(t *testing.T) {
-	_, err := tlsutil.Build(config.TLSConfig{CAFile: "/nonexistent/ca.pem"}, "host.example")
+func TestBuildTLSConfig_CAFile_NotFound(t *testing.T) {
+	_, err := config.BuildTLSConfig(config.TLSConfig{CAFile: "/nonexistent/ca.pem"}, "host.example")
 	if err == nil {
 		t.Fatal("expected error for non-existent ca_file, got nil")
 	}
 }
 
-func TestBuild_CAFile_GarbagePEM(t *testing.T) {
+func TestBuildTLSConfig_CAFile_GarbagePEM(t *testing.T) {
 	dir := t.TempDir()
 	caPath := filepath.Join(dir, "garbage.pem")
 	if err := os.WriteFile(caPath, []byte("this is not a pem file"), 0o600); err != nil {
 		t.Fatalf("write garbage ca file: %v", err)
 	}
 
-	_, err := tlsutil.Build(config.TLSConfig{CAFile: caPath}, "host.example")
+	_, err := config.BuildTLSConfig(config.TLSConfig{CAFile: caPath}, "host.example")
 	if err == nil {
 		t.Fatal("expected error for garbage PEM, got nil")
 	}

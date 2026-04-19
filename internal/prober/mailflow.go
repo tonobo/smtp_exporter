@@ -17,12 +17,9 @@ import (
 
 	"github.com/tonobo/smtp_exporter/internal/config"
 	pdns "github.com/tonobo/smtp_exporter/internal/dns"
-	"github.com/tonobo/smtp_exporter/internal/dnsbl"
 	"github.com/tonobo/smtp_exporter/internal/imap"
-	"github.com/tonobo/smtp_exporter/internal/message"
+	pmail "github.com/tonobo/smtp_exporter/internal/mail"
 	psmtp "github.com/tonobo/smtp_exporter/internal/smtp"
-	"github.com/tonobo/smtp_exporter/internal/spf"
-	"github.com/tonobo/smtp_exporter/internal/tlsutil"
 )
 
 // Run executes the mailflow probe for the given module and records all
@@ -41,27 +38,32 @@ func Run(
 
 	hostname, _ := os.Hostname()
 	probeID := uuid.New().String()
-	built := message.Build(message.Input{
+	built := pmail.Build(pmail.Input{
 		ProbeID: probeID, From: m.SMTP.MailFrom, To: m.SMTP.MailTo, Hostname: hostname, ModuleName: moduleName,
 	})
 
 	// SPF lookup runs concurrently with SMTP send.
-	spfDone := make(chan spf.Result, 1)
+	spfCtx, cancelSPF := context.WithCancel(ctx)
+	defer cancelSPF()
+	spfDone := make(chan pdns.SPFResult, 1)
 	go func() {
 		t0 := time.Now()
-		res := spf.Lookup(ctx, r, domainOf(m.SMTP.MailFrom))
+		res := pdns.LookupSPF(spfCtx, r, pmail.DomainOf(m.SMTP.MailFrom))
 		fm.phaseDuration.WithLabelValues("spf").Set(time.Since(t0).Seconds())
-		spfDone <- res
+		select {
+		case spfDone <- res:
+		case <-spfCtx.Done():
+		}
 	}()
 
 	// Build TLS configs — a misconfigured ca_file aborts the probe rather than
 	// silently falling back to the system pool.
-	smtpTLS, err := tlsutil.Build(m.SMTP.TLSConfig, hostOnly(m.SMTP.Server))
+	smtpTLS, err := config.BuildTLSConfig(m.SMTP.TLSConfig, hostOnly(m.SMTP.Server))
 	if err != nil {
 		logger.Warn("smtp tls_config invalid", "module", moduleName, "error", err.Error())
 		return false
 	}
-	imapTLS, err := tlsutil.Build(m.IMAP.TLSConfig, hostOnly(m.IMAP.Server))
+	imapTLS, err := config.BuildTLSConfig(m.IMAP.TLSConfig, hostOnly(m.IMAP.Server))
 	if err != nil {
 		logger.Warn("imap tls_config invalid", "module", moduleName, "error", err.Error())
 		return false
@@ -69,7 +71,7 @@ func Run(
 
 	// SMTP send
 	smtpStart := time.Now()
-	sendRes, _ := psmtp.Send(ctx, psmtp.Input{
+	sendRes, sendErr := psmtp.Send(ctx, psmtp.Input{
 		Server: m.SMTP.Server, TLS: m.SMTP.TLS, EHLO: m.SMTP.EHLO,
 		Username: m.SMTP.Auth.Username, Password: m.SMTP.Auth.Password,
 		MailFrom: m.SMTP.MailFrom, MailTo: m.SMTP.MailTo,
@@ -88,18 +90,22 @@ func Run(
 	}
 
 	if !sendRes.Success {
+		msg := sendRes.Message
+		if msg == "" && sendErr != nil {
+			msg = sendErr.Error()
+		}
 		logger.Warn("smtp send failed",
 			"module", moduleName,
 			"status_code", sendRes.StatusCode,
 			"enhanced_status_code", sendRes.EnhancedStatusCode,
-			"server_message", sendRes.Message,
+			"server_message", msg,
 		)
 		return false
 	}
 	sendDone := time.Now()
 
 	// Discover IMAP folder layout (INBOX + spam/junk folder if present).
-	imapIn := imap.ClientInput{
+	imapIn := imap.Input{
 		Server: m.IMAP.Server, TLS: m.IMAP.TLS,
 		Username: m.IMAP.Auth.Username, Password: m.IMAP.Auth.Password,
 		Mailbox: m.IMAP.Mailbox, PollInterval: m.IMAP.PollInterval,
@@ -176,7 +182,7 @@ func Run(
 
 	// Parse received mail
 	parseStart := time.Now()
-	parseReceivedMail(fm, raw, r, g)
+	parseReceivedMail(ctx, fm, raw, r, g)
 	fm.phaseDuration.WithLabelValues("parse").Set(time.Since(parseStart).Seconds())
 
 	// Cleanup — target the folder where the message was found.
@@ -201,21 +207,24 @@ func Run(
 	return true
 }
 
-func parseReceivedMail(fm *flowMetrics, raw []byte, r pdns.Resolver, g config.Global) {
+func parseReceivedMail(ctx context.Context, fm *flowMetrics, raw []byte, r pdns.Resolver, g config.Global) {
 	msg, err := mail.ReadMessage(strings.NewReader(string(raw)))
 	if err != nil {
 		return
 	}
 
+	// Parse Received headers once; share with all consumers.
+	received := pmail.ParseReceivedHeaders(raw)
+
 	// Sender IP from Received chain
-	ip, ok := message.FirstPublicSenderIP(raw)
+	ip, ok := pmail.FirstPublicSenderIP(received)
 	if ok {
 		fm.senderIPFound.Set(1)
 		fm.senderIPInfo.WithLabelValues(ip.String()).Set(1)
 
 		// DNSBL
 		dnsblStart := time.Now()
-		results := dnsbl.Query(context.Background(), r, ip, g.DNSBL.Zones)
+		results := pdns.QueryBlacklist(ctx, r, ip, g.DNSBL.Zones)
 		fm.phaseDuration.WithLabelValues("dnsbl").Set(time.Since(dnsblStart).Seconds())
 		for _, res := range results {
 			fm.dnsblChecked.WithLabelValues(res.Zone).Set(1)
@@ -233,7 +242,7 @@ func parseReceivedMail(fm *flowMetrics, raw []byte, r pdns.Resolver, g config.Gl
 	fm.authres.Observe(msg.Header.Get("Authentication-Results"))
 
 	// Spam
-	fm.spam.Observe(msg.Header)
+	fm.spam.ObserveSpam(msg.Header)
 }
 
 // classifyFolder maps a raw IMAP folder name to one of the canonical
@@ -259,7 +268,7 @@ func runCleanup(
 	if !g.Cleanup.Enabled {
 		return
 	}
-	n, err := imap.Sweep(ctx, imap.ClientInput{
+	n, err := imap.Sweep(ctx, imap.Input{
 		Server: m.IMAP.Server, TLS: m.IMAP.TLS,
 		Username: m.IMAP.Auth.Username, Password: m.IMAP.Auth.Password,
 		Mailbox: mailbox, PollInterval: m.IMAP.PollInterval,
@@ -286,14 +295,6 @@ func writeSMTPMetrics(fm *flowMetrics, r psmtp.Result) {
 	if r.TLSFingerprint != "" {
 		fm.smtpTLSFingerprint.WithLabelValues(r.TLSFingerprint).Set(1)
 	}
-}
-
-func domainOf(addr string) string {
-	at := strings.LastIndex(addr, "@")
-	if at < 0 {
-		return addr
-	}
-	return addr[at+1:]
 }
 
 func boolToFloat(b bool) float64 {

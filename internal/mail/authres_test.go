@@ -1,4 +1,4 @@
-package authres
+package mail
 
 import (
 	"io"
@@ -13,7 +13,7 @@ import (
 func TestObserve_Gmail(t *testing.T) {
 	raw, _ := os.ReadFile("../../testdata/auth_results/gmail.txt")
 	reg := prometheus.NewRegistry()
-	m := NewMetrics(reg)
+	m := NewAuthResMetrics(reg)
 
 	n := m.Observe(string(raw))
 	if n != 3 {
@@ -35,7 +35,7 @@ probe_auth_result_found{check="spf"} 1
 func TestObserve_Minimal_HasSPFOnly(t *testing.T) {
 	raw, _ := os.ReadFile("../../testdata/auth_results/minimal.txt")
 	reg := prometheus.NewRegistry()
-	m := NewMetrics(reg)
+	m := NewAuthResMetrics(reg)
 
 	_ = m.Observe(string(raw))
 

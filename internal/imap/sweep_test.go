@@ -18,7 +18,7 @@ func TestSweep_DeletesOldProbeMail(t *testing.T) {
 		appendMsg([]byte(fmt.Sprintf("Subject: [smtp_exporter] p-%d\r\nX-Probe-ID: p-%d\r\nFrom: a@b\r\nTo: c@d\r\n\r\nbody\r\n", i, i)))
 	}
 
-	in := ClientInput{Server: addr, TLS: "no", Username: "u", Password: "p", Mailbox: "INBOX", PollInterval: 200 * time.Millisecond}
+	in := Input{Server: addr, TLS: "no", Username: "u", Password: "p", Mailbox: "INBOX", PollInterval: 200 * time.Millisecond}
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 

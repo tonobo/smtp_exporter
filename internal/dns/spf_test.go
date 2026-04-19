@@ -1,16 +1,14 @@
-package spf
+package dns
 
 import (
 	"context"
 	"testing"
-
-	pdns "github.com/tonobo/smtp_exporter/internal/dns"
 )
 
-func TestLookup_Present(t *testing.T) {
-	r := pdns.NewFake()
+func TestLookupSPF_Present(t *testing.T) {
+	r := NewFake()
 	r.TXT["example.org"] = []string{"v=spf1 ip4:198.51.100.0/24 -all"}
-	res := Lookup(context.Background(), r, "example.org")
+	res := LookupSPF(context.Background(), r, "example.org")
 	if !res.Found {
 		t.Fatal("expected found")
 	}
@@ -19,27 +17,27 @@ func TestLookup_Present(t *testing.T) {
 	}
 }
 
-func TestLookup_Missing(t *testing.T) {
-	r := pdns.NewFake()
-	res := Lookup(context.Background(), r, "missing.example.org")
+func TestLookupSPF_Missing(t *testing.T) {
+	r := NewFake()
+	res := LookupSPF(context.Background(), r, "missing.example.org")
 	if res.Found {
 		t.Fatal("expected not found")
 	}
 }
 
-func TestLookup_SkipsNonSPF(t *testing.T) {
-	r := pdns.NewFake()
+func TestLookupSPF_SkipsNonSPF(t *testing.T) {
+	r := NewFake()
 	r.TXT["example.org"] = []string{"some-other-txt", "v=spf1 -all"}
-	res := Lookup(context.Background(), r, "example.org")
+	res := LookupSPF(context.Background(), r, "example.org")
 	if !res.Found || res.Record != "v=spf1 -all" {
 		t.Fatalf("%#v", res)
 	}
 }
 
-func TestLookup_NXDOMAIN_NoError(t *testing.T) {
-	r := pdns.NewFake()
+func TestLookupSPF_NXDOMAIN_NoError(t *testing.T) {
+	r := NewFake()
 	// key absent → ErrNXDomain from resolver
-	res := Lookup(context.Background(), r, "gone.example.org")
+	res := LookupSPF(context.Background(), r, "gone.example.org")
 	if res.Found {
 		t.Fatal("expected not found")
 	}

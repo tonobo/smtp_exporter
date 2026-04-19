@@ -1,21 +1,19 @@
-// Package authres parses the Authentication-Results header and exposes the
-// result of each method (spf, dkim, dmarc) as Prometheus gauges.
-package authres
+package mail
 
 import (
 	"github.com/emersion/go-msgauth/authres"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-// Metrics holds the gauge vectors produced by this package.
-type Metrics struct {
+// AuthResMetrics holds the gauge vectors produced by auth-result parsing.
+type AuthResMetrics struct {
 	Found *prometheus.GaugeVec
 	Info  *prometheus.GaugeVec
 }
 
-// NewMetrics registers the metrics on reg.
-func NewMetrics(reg prometheus.Registerer) *Metrics {
-	m := &Metrics{
+// NewAuthResMetrics registers the metrics on reg.
+func NewAuthResMetrics(reg prometheus.Registerer) *AuthResMetrics {
+	m := &AuthResMetrics{
 		Found: prometheus.NewGaugeVec(prometheus.GaugeOpts{
 			Name: "probe_auth_result_found",
 			Help: "1 if the given auth-results check was present.",
@@ -32,7 +30,7 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 // Observe parses a single Authentication-Results header value and emits
 // metrics for each of spf / dkim / dmarc present in it. Returns the number
 // of checks observed.
-func (m *Metrics) Observe(headerValue string) int {
+func (m *AuthResMetrics) Observe(headerValue string) int {
 	if headerValue == "" {
 		return 0
 	}

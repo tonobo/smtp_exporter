@@ -3,8 +3,7 @@ package prober
 import (
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/tonobo/smtp_exporter/internal/authres"
-	"github.com/tonobo/smtp_exporter/internal/spam"
+	"github.com/tonobo/smtp_exporter/internal/mail"
 )
 
 type flowMetrics struct {
@@ -51,8 +50,8 @@ type flowMetrics struct {
 	spfRecordInfo  *prometheus.GaugeVec
 
 	// sub-metrics
-	authres *authres.Metrics
-	spam    *spam.Metrics
+	authres *mail.AuthResMetrics
+	spam    *mail.SpamMetrics
 }
 
 func g(name, help string) prometheus.Gauge {
@@ -123,7 +122,7 @@ func newFlowMetrics(reg prometheus.Registerer) *flowMetrics {
 		m.dnsblChecked, m.dnsblListed, m.dnsblDuration, m.dnsblResultCode,
 		m.spfRecordFound, m.spfRecordInfo,
 	)
-	m.authres = authres.NewMetrics(reg)
-	m.spam = spam.NewMetrics(reg)
+	m.authres = mail.NewAuthResMetrics(reg)
+	m.spam = mail.NewSpamMetrics(reg)
 	return m
 }

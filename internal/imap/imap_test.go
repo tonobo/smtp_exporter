@@ -96,7 +96,7 @@ func memServerWithFolders(t *testing.T, mailboxes []string, specialUseJunk ...st
 // connectTest dials addr (plain TCP) and logs in as "u"/"p".
 func connectTest(t *testing.T, addr string) *imapclient.Client {
 	t.Helper()
-	in := ClientInput{Server: addr, TLS: "no", Username: "u", Password: "p"}
+	in := Input{Server: addr, TLS: "no", Username: "u", Password: "p"}
 	ctx := context.Background()
 	c, err := connect(ctx, in)
 	if err != nil {
@@ -165,7 +165,7 @@ func TestWaitForSubject_Found(t *testing.T) {
 
 	appendMsg([]byte("Subject: [smtp_exporter] abc-123\r\nX-Probe-ID: abc-123\r\nFrom: a@b\r\nTo: c@d\r\n\r\nbody\r\n"))
 
-	in := ClientInput{Server: addr, TLS: "no", Username: "u", Password: "p", Mailbox: "INBOX", PollInterval: 200 * time.Millisecond}
+	in := Input{Server: addr, TLS: "no", Username: "u", Password: "p", Mailbox: "INBOX", PollInterval: 200 * time.Millisecond}
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
@@ -188,7 +188,7 @@ func TestWaitForSubject_Timeout(t *testing.T) {
 	addr, _, stop := startMemServer(t, "u", "p")
 	defer stop()
 
-	in := ClientInput{Server: addr, TLS: "no", Username: "u", Password: "p", Mailbox: "INBOX", PollInterval: 200 * time.Millisecond}
+	in := Input{Server: addr, TLS: "no", Username: "u", Password: "p", Mailbox: "INBOX", PollInterval: 200 * time.Millisecond}
 	ctx, cancel := context.WithTimeout(context.Background(), 600*time.Millisecond)
 	defer cancel()
 
@@ -234,7 +234,7 @@ func TestWaitForSubject_FoundInSpam(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	in := ClientInput{Server: addr, TLS: "no", Username: "u", Password: "p", Mailbox: "INBOX", PollInterval: 100 * time.Millisecond}
+	in := Input{Server: addr, TLS: "no", Username: "u", Password: "p", Mailbox: "INBOX", PollInterval: 100 * time.Millisecond}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -358,7 +358,7 @@ func TestWaitForSubject_PostSelectDelivery(t *testing.T) {
 	const awaitedSubject = "[smtp_exporter] post-select-delivery-test"
 	const pollInterval = 150 * time.Millisecond
 
-	in := ClientInput{
+	in := Input{
 		Server:       addr,
 		TLS:          "no",
 		Username:     "u",
@@ -447,7 +447,7 @@ func TestMoveToInbox_FromGmailSpam(t *testing.T) {
 	}
 
 	// Fetch the UID of the message we just appended via WaitForSubject.
-	in := ClientInput{Server: addr, TLS: "no", Username: "u", Password: "p", Mailbox: "INBOX", PollInterval: 100 * time.Millisecond}
+	in := Input{Server: addr, TLS: "no", Username: "u", Password: "p", Mailbox: "INBOX", PollInterval: 100 * time.Millisecond}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 

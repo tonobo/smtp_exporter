@@ -1,5 +1,5 @@
-// Package message builds and parses probe mails.
-package message
+// Package mail builds and parses probe mails and extracts mail-content metrics.
+package mail
 
 import (
 	"fmt"
@@ -26,9 +26,9 @@ type Built struct {
 	RFC5322 string // full headers + body, CRLF line endings
 }
 
-// domainOf returns the domain part of an email address, or the full string if
+// DomainOf returns the domain part of an email address, or the full string if
 // no '@' is present.
-func domainOf(addr string) string {
+func DomainOf(addr string) string {
 	if at := strings.LastIndex(addr, "@"); at >= 0 {
 		return addr[at+1:]
 	}
@@ -52,7 +52,7 @@ func versionString() string {
 // three fields embed the per-probe context: campaign="probe",
 // customer=<sender-domain>, other=<module-name>.
 func feedbackID(moduleName, from string) string {
-	domain := domainOf(from)
+	domain := DomainOf(from)
 	if domain == "" {
 		domain = "unknown"
 	}
@@ -69,7 +69,7 @@ func Build(in Input) Built {
 		now = time.Now()
 	}
 	subj := fmt.Sprintf("[smtp_exporter] %s", in.ProbeID)
-	fromDomain := domainOf(in.From)
+	fromDomain := DomainOf(in.From)
 	msgID := fmt.Sprintf("<%s@%s>", in.ProbeID, fromDomain)
 
 	var b strings.Builder
