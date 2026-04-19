@@ -208,13 +208,12 @@ func Run(
 }
 
 func parseReceivedMail(ctx context.Context, fm *flowMetrics, raw []byte, r pdns.Resolver, g config.Global) {
+	// Parse once; share header slice with all consumers to avoid re-parsing.
 	msg, err := mail.ReadMessage(strings.NewReader(string(raw)))
 	if err != nil {
 		return
 	}
-
-	// Parse Received headers once; share with all consumers.
-	received := pmail.ParseReceivedHeaders(raw)
+	received := msg.Header["Received"]
 
 	// Sender IP from Received chain
 	ip, ok := pmail.FirstPublicSenderIP(received)

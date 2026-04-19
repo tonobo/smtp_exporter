@@ -64,6 +64,10 @@ func (h *Handler) Register(mux *http.ServeMux) {
 }
 
 func (h *Handler) probe(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 	name := r.URL.Query().Get("module")
 	cfg := h.Config.Get()
 	mod, ok := cfg.Modules[name]

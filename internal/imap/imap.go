@@ -101,6 +101,13 @@ func DiscoverFolders(ctx context.Context, in Input) (Folders, error) {
 // A single-element slice []string{in.Mailbox} reproduces the original
 // single-folder behaviour.
 func WaitForSubject(ctx context.Context, in Input, subject string, folders []string) ([]byte, string, imap.UID, error) {
+	if len(folders) == 0 {
+		return nil, "", 0, errors.New("waitForSubject: no folders to poll")
+	}
+	if in.PollInterval <= 0 {
+		return nil, "", 0, errors.New("waitForSubject: poll_interval must be positive")
+	}
+
 	c, err := connect(ctx, in)
 	if err != nil {
 		return nil, "", 0, err
@@ -116,17 +123,22 @@ func WaitForSubject(ctx context.Context, in Input, subject string, folders []str
 
 	// Select the first folder up-front to satisfy servers that require an
 	// initial SELECT before issuing other commands.
-	if len(folders) > 0 {
-		if _, err := c.Select(folders[0], &imap.SelectOptions{ReadOnly: true}).Wait(); err != nil {
-			return nil, "", 0, fmt.Errorf("select: %w", err)
-		}
+	if _, err := c.Select(folders[0], &imap.SelectOptions{ReadOnly: true}).Wait(); err != nil {
+		return nil, "", 0, fmt.Errorf("select: %w", err)
 	}
 
 	for {
 		for _, folder := range folders {
 			// SELECT (read-only) switches to the folder and refreshes the view.
 			if _, err := c.Select(folder, &imap.SelectOptions{ReadOnly: true}).Wait(); err != nil {
-				continue // skip folders that don't exist or have no permission
+				// A NO response means the folder doesn't exist or we have no
+				// permission — skip and try the next one. Any other error
+				// (network, BAD response, etc.) is fatal.
+				var imapErr *imap.Error
+				if errors.As(err, &imapErr) && imapErr.Type == imap.StatusResponseTypeNo {
+					continue
+				}
+				return nil, "", 0, fmt.Errorf("select %s: %w", folder, err)
 			}
 			// NOOP causes the server to flush any pending untagged responses
 			// (EXISTS, RECENT, etc.) so newly delivered messages become visible.
@@ -136,7 +148,13 @@ func WaitForSubject(ctx context.Context, in Input, subject string, folders []str
 			}
 			uids, err := searchSubject(c, subject)
 			if err != nil {
-				continue
+				// A NO response from SEARCH means the folder has no permission
+				// or the search failed softly — try next folder.
+				var imapErr *imap.Error
+				if errors.As(err, &imapErr) && imapErr.Type == imap.StatusResponseTypeNo {
+					continue
+				}
+				return nil, "", 0, fmt.Errorf("search %s: %w", folder, err)
 			}
 			if len(uids) > 0 {
 				raw, fetchErr := fetchFirst(c, uids[0])
