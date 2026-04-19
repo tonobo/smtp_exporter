@@ -81,7 +81,10 @@ func DiscoverFolders(ctx context.Context, in Input) (Folders, error) {
 	if err != nil {
 		return Folders{Inbox: defaultInbox}, err
 	}
-	defer c.Logout()
+	defer func() {
+		_ = c.Logout().Wait()
+		_ = c.Close()
+	}()
 
 	if err := c.Login(in.Username, in.Password).Wait(); err != nil {
 		return Folders{Inbox: "INBOX"}, fmt.Errorf("login: %w", err)
@@ -102,7 +105,10 @@ func WaitForSubject(ctx context.Context, in Input, subject string, folders []str
 	if err != nil {
 		return nil, "", 0, err
 	}
-	defer c.Logout()
+	defer func() {
+		_ = c.Logout().Wait()
+		_ = c.Close()
+	}()
 
 	if err := c.Login(in.Username, in.Password).Wait(); err != nil {
 		return nil, "", 0, fmt.Errorf("login: %w", err)
@@ -155,7 +161,10 @@ func MoveToInbox(ctx context.Context, in Input, sourceFolder string, uid imap.UI
 	if err != nil {
 		return false, err
 	}
-	defer c.Logout()
+	defer func() {
+		_ = c.Logout().Wait()
+		_ = c.Close()
+	}()
 
 	if err := c.Login(in.Username, in.Password).Wait(); err != nil {
 		return false, fmt.Errorf("login: %w", err)
@@ -183,7 +192,10 @@ func Delete(ctx context.Context, in Input, uids []imap.UID) error {
 	if err != nil {
 		return err
 	}
-	defer c.Logout()
+	defer func() {
+		_ = c.Logout().Wait()
+		_ = c.Close()
+	}()
 	if err := c.Login(in.Username, in.Password).Wait(); err != nil {
 		return err
 	}
@@ -230,6 +242,7 @@ func connect(ctx context.Context, in Input) (*imapclient.Client, error) {
 		cfg = ensureTLSMin(cfg)
 		c, err := imapclient.NewStartTLS(conn, &imapclient.Options{TLSConfig: cfg})
 		if err != nil {
+			_ = conn.Close()
 			return nil, fmt.Errorf("starttls: %w", err)
 		}
 		return c, nil
@@ -307,7 +320,10 @@ func Sweep(ctx context.Context, in Input, maxAge time.Duration) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	defer c.Logout()
+	defer func() {
+		_ = c.Logout().Wait()
+		_ = c.Close()
+	}()
 	if err := c.Login(in.Username, in.Password).Wait(); err != nil {
 		return 0, err
 	}
