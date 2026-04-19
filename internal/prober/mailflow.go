@@ -3,8 +3,10 @@ package prober
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/mail"
 	"os"
 	"strings"
@@ -20,6 +22,7 @@ import (
 	"github.com/tonobo/smtp_exporter/internal/message"
 	psmtp "github.com/tonobo/smtp_exporter/internal/smtp"
 	"github.com/tonobo/smtp_exporter/internal/spf"
+	"github.com/tonobo/smtp_exporter/internal/tlsutil"
 )
 
 // Run executes the mailflow probe for the given module and records all
@@ -51,13 +54,27 @@ func Run(
 		spfDone <- res
 	}()
 
+	// Build TLS configs — a misconfigured ca_file aborts the probe rather than
+	// silently falling back to the system pool.
+	smtpTLS, err := tlsutil.Build(m.SMTP.TLSConfig, hostOnly(m.SMTP.Server))
+	if err != nil {
+		logger.Warn("smtp tls_config invalid", "module", moduleName, "error", err.Error())
+		return false
+	}
+	imapTLS, err := tlsutil.Build(m.IMAP.TLSConfig, hostOnly(m.IMAP.Server))
+	if err != nil {
+		logger.Warn("imap tls_config invalid", "module", moduleName, "error", err.Error())
+		return false
+	}
+
 	// SMTP send
 	smtpStart := time.Now()
 	sendRes, _ := psmtp.Send(ctx, psmtp.Input{
 		Server: m.SMTP.Server, TLS: m.SMTP.TLS, EHLO: m.SMTP.EHLO,
 		Username: m.SMTP.Auth.Username, Password: m.SMTP.Auth.Password,
 		MailFrom: m.SMTP.MailFrom, MailTo: m.SMTP.MailTo,
-		Data: []byte(built.RFC5322),
+		Data:      []byte(built.RFC5322),
+		TLSConfig: smtpTLS,
 	})
 	fm.phaseDuration.WithLabelValues("smtp").Set(time.Since(smtpStart).Seconds())
 	writeSMTPMetrics(fm, sendRes)
@@ -86,6 +103,7 @@ func Run(
 		Server: m.IMAP.Server, TLS: m.IMAP.TLS,
 		Username: m.IMAP.Auth.Username, Password: m.IMAP.Auth.Password,
 		Mailbox: m.IMAP.Mailbox, PollInterval: m.IMAP.PollInterval,
+		TLSConfig: imapTLS,
 	}
 	folders, err := imap.DiscoverFolders(ctx, imapIn)
 	if err != nil {
@@ -119,7 +137,7 @@ func Run(
 		logger.Warn("imap wait failed", "module", moduleName, "error", err.Error())
 		fm.imapLoginSuccess.Set(boolToFloat(!strings.Contains(err.Error(), "login")))
 		fm.imapMessageReceived.Set(0)
-		runCleanup(ctx, logger, moduleName, m, g, fm, m.IMAP.Mailbox)
+		runCleanup(ctx, logger, moduleName, m, g, fm, m.IMAP.Mailbox, imapTLS)
 		return false
 	}
 	fm.imapLoginSuccess.Set(1)
@@ -172,10 +190,10 @@ func Run(
 		if folderFound != "" {
 			cleanupMailbox = folderFound
 		}
-		runCleanup(ctx, logger, moduleName, m, g, fm, cleanupMailbox)
+		runCleanup(ctx, logger, moduleName, m, g, fm, cleanupMailbox, imapTLS)
 	} else {
 		// Still run the age-based sweep on INBOX to clean up old probes.
-		runCleanup(ctx, logger, moduleName, m, g, fm, m.IMAP.Mailbox)
+		runCleanup(ctx, logger, moduleName, m, g, fm, m.IMAP.Mailbox, imapTLS)
 	}
 
 	fm.success.Set(1)
@@ -236,6 +254,7 @@ func classifyFolder(name string) string {
 
 func runCleanup(
 	ctx context.Context, logger *slog.Logger, moduleName string, m config.Module, g config.Global, fm *flowMetrics, mailbox string,
+	imapTLS *tls.Config,
 ) {
 	if !g.Cleanup.Enabled {
 		return
@@ -244,6 +263,7 @@ func runCleanup(
 		Server: m.IMAP.Server, TLS: m.IMAP.TLS,
 		Username: m.IMAP.Auth.Username, Password: m.IMAP.Auth.Password,
 		Mailbox: mailbox, PollInterval: m.IMAP.PollInterval,
+		TLSConfig: imapTLS,
 	}, g.Cleanup.MaxAge)
 	if err != nil {
 		logger.Warn("imap cleanup failed", "module", moduleName, "error", err.Error())
@@ -281,4 +301,12 @@ func boolToFloat(b bool) float64 {
 		return 1
 	}
 	return 0
+}
+
+func hostOnly(addr string) string {
+	h, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return addr
+	}
+	return h
 }

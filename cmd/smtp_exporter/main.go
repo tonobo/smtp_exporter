@@ -42,6 +42,12 @@ func run() int {
 	logger := slog.New(slog.NewJSONHandler(os.Stderr, nil))
 	logger.Info("starting smtp_exporter", "version", version.Info())
 
+	if *webConfigFile == "" {
+		logger.Warn("HTTP endpoints unauthenticated",
+			"hint", "set --web.config.file to enable basic auth or mTLS via prometheus/exporter-toolkit",
+			"affected_endpoints", "/-/reload, /probe, /metrics, /config")
+	}
+
 	sc := config.NewSafeConfig()
 	if err := sc.Reload(*configFile); err != nil {
 		logger.Error("config reload failed", "err", err)

@@ -199,6 +199,29 @@ Message-ID is generated with the sender's From-domain (not the pod hostname)
 so the domain aligns with the SPF/DKIM identities and doesn't trigger
 MSGID_FROM_MTA_HEADER-style anti-spam rules.
 
+## Securing the HTTP server
+
+The exporter exposes `/probe`, `/metrics`, `/config`, `/-/reload`, `/-/health`, and
+`/` on the configured listen address. None of these endpoints are
+authenticated by default. For deployments where the listen address is
+reachable beyond a trusted Prometheus scraper, enable Basic Auth or mTLS via
+the exporter-toolkit `--web.config.file`:
+
+```yaml
+# /etc/smtp_exporter/web.yml
+basic_auth_users:
+  prometheus: $2b$12$<bcrypt-hash-of-password>
+```
+
+```bash
+smtp_exporter --config.file=smtp_exporter.yml --web.config.file=/etc/smtp_exporter/web.yml
+```
+
+`/-/reload` in particular should not be reachable from untrusted networks: combined
+with a config-file write primitive it becomes a credential-redirect path.
+See the [exporter-toolkit web docs](https://github.com/prometheus/exporter-toolkit/blob/master/docs/web-configuration.md)
+for the full TLS / Basic Auth schema.
+
 ## Development
 
 ```bash

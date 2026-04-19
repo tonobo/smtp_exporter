@@ -104,7 +104,8 @@ func newFlowMetrics(reg prometheus.Registerer) *flowMetrics {
 		dnsblDuration: gv("probe_dnsbl_lookup_duration_seconds", "DNSBL lookup duration per zone.", []string{"zone"}),
 		dnsblResultCode: gv(
 			"probe_dnsbl_result_code",
-			"1 for the raw A-record response code returned by a DNSBL zone. Useful for diagnosing rate-limit codes like 127.255.255.254 that are not listings.",
+			// Rate-limit codes like 127.255.255.254 are not listings; this label lets you distinguish them.
+			"1 for the raw A-record response code returned by a DNSBL zone.",
 			[]string{"zone", "ip", "code"},
 		),
 
