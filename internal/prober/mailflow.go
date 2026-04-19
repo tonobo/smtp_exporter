@@ -267,6 +267,8 @@ func runCleanup(
 	if !g.Cleanup.Enabled {
 		return
 	}
+	t0 := time.Now()
+	defer func() { fm.phaseDuration.WithLabelValues("cleanup").Set(time.Since(t0).Seconds()) }()
 	n, err := imap.Sweep(ctx, imap.Input{
 		Server: m.IMAP.Server, TLS: m.IMAP.TLS,
 		Username: m.IMAP.Auth.Username, Password: m.IMAP.Auth.Password,

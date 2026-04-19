@@ -75,6 +75,18 @@ func TestBarracuda(t *testing.T) {
 	}
 }
 
+// TestStalwart verifies that Stalwart's X-Spam-Result header (rspamd format)
+// is parsed by the rspamd parser.
+func TestStalwart(t *testing.T) {
+	h := loadSpamHeader(t, "../../testdata/spam_headers/stalwart.eml")
+	reg := prometheus.NewRegistry()
+	m := NewSpamMetrics(reg)
+	m.ObserveSpam(h)
+	if got := gaugeValue(t, reg, "probe_spam_score", "source", "rspamd"); got != 3.5 {
+		t.Fatalf("score=%v, want 3.5", got)
+	}
+}
+
 func gaugeValue(t *testing.T, reg *prometheus.Registry, name, labelKey, labelVal string) float64 {
 	t.Helper()
 	mfs, _ := reg.Gather()

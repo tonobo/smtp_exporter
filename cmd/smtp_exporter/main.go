@@ -53,6 +53,21 @@ func run() int {
 		logger.Error("config reload failed", "err", err)
 		return 1
 	}
+
+	// Warn about InsecureSkipVerify active in any module — valid for testing only.
+	for name, mod := range sc.Get().Modules {
+		if mod.SMTP.TLSConfig.InsecureSkipVerify {
+			logger.Warn("InsecureSkipVerify=true active in module config",
+				"module", name, "side", "smtp",
+				"advice", "valid for testing only — disables certificate validation")
+		}
+		if mod.IMAP.TLSConfig.InsecureSkipVerify {
+			logger.Warn("InsecureSkipVerify=true active in module config",
+				"module", name, "side", "imap",
+				"advice", "valid for testing only — disables certificate validation")
+		}
+	}
+
 	if *configCheck {
 		logger.Info("config ok")
 		return 0
